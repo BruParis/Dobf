@@ -14,99 +14,156 @@ where
     Ok(io::BufReader::new(file).lines())
 }
 
-pub fn parse_line(line: String) -> Result<String, ParseError> {
-    clean_line(line)
+#[derive(Debug, PartialEq)]
+enum Assoc {
+    Right,
+    Left,
+    Both,
 }
 
-pub fn clean_line(mut line: String) -> Result<String, ParseError> {
+// Shunting yard algorithm
+pub fn parse_rpn(mut line: String) -> Result<Vec<String>, ParseError> {
     println!("expr: {}", line);
-    let mut par_count = 0;
-    let mut neg_count = 0;
-    let mut res_str = String::new();
-    let mut curr_term = String::new();
-    let mut curr_term_has_op = false;
+    let mut neg_sign = false;
+    let mut res_rpn: Vec<String> = Vec::new();
+    let mut sign_count = 0;
+    let mut op_stack: Vec<char> = Vec::new();
+    let mut curr_int = String::new();
 
     // remove whitespace
     line = line.replace(" ", "");
+    line.push(' ');
     line = " ".to_string() + &line;
 
     let inter = line.chars().collect::<Vec<char>>();
     for w in inter.windows(2) {
-        // println!(
-        //     "{:};{:} - curr: {:} - res: {:}",
-        //     w[0], w[1], curr_term, res_str
-        // );
-        match w[1] {
+        if neg_sign && w[0] != '~' {
+            op_stack.push('~');
+            neg_sign = false;
+        }
+
+        match w[0] {
             '(' => {
-                par_count += 1;
-            }
-            ')' => {
-                par_count -= 1;
-                if curr_term_has_op && w[0] != ')' {
-                    curr_term.push(')');
-                    curr_term = "(".to_string() + &curr_term;
-                }
-                if par_count == 0 {
-                    res_str.push_str(&curr_term);
-                    curr_term = String::new();
-                }
-
-                curr_term_has_op = false;
-            }
-            '~' => {
-                neg_count += 1;
-            }
-            '+' | '-' | '^' | '&' | '|' => {
-                if neg_count > 0 {
-                    return Err(ParseError::NegSignOp(format!(
-                        "neg sign before operator: ~{}",
-                        w[1]
-                    )));
-                }
-
-                if "-+^&|".contains(w[0]) {
-                    return Err(ParseError::SuccessiveOp(format!(
-                        "Successive operators: {}{}",
+                if "+-.^&|".contains(w[1]) {
+                    return Err(ParseError::WrongSeqChar(format!(
+                        "wrong sequence of char: {}{}",
                         w[0], w[1]
                     )));
                 }
-                if par_count > 0 {
-                    curr_term.push(w[1]);
-                    curr_term_has_op = true;
+
+                op_stack.push('(');
+            }
+            ')' => {
+                // while there is no openning parenthesis at top of stack...
+                while op_stack.last() != Some(&'(') {
+                    // ... check stack is not empty (or else it means a mismatch in parenthesis)
+                    if op_stack.len() == 0 {
+                        return Err(ParseError::MissOpenPar("Missing (".to_string()));
+                    }
+
+                    if let Some(op) = op_stack.pop() {
+                        res_rpn.push(op.to_string());
+                    }
+                }
+
+                // ... check there is indeed an openning parenthesis at top of stack
+                // ... and discard it
+                if op_stack.last() == Some(&'(') {
+                    op_stack.pop();
                 } else {
-                    res_str.push(w[1]);
+                    return Err(ParseError::MissOpenPar("Missing (".to_string()));
+                }
+
+                // if there is a negative sign, pop and push
+                if op_stack.last() == Some(&'~') {
+                    op_stack.pop();
+                    res_rpn.push('~'.to_string());
+                }
+            }
+            '~' => {
+                if w[1] != '~' && !w[1].is_alphanumeric() && !"()".contains(w[1]) {
+                    return Err(ParseError::WrongSeqChar(format!(
+                        "wrong sequence of char: {}{}",
+                        w[0], w[1]
+                    )));
+                }
+
+                neg_sign = !neg_sign;
+            }
+            '+' | '-' | '.' | '^' | '&' | '|' => {
+                if "+-.^&|".contains(w[1]) {
+                    return Err(ParseError::WrongSeqChar(format!(
+                        "wrong sequence of char: {}{}",
+                        w[0], w[1]
+                    )));
+                }
+
+                while let Some(op) = op_stack.last() {
+                    if op == &'(' || op_stack.len() == 0 {
+                        break;
+                    }
+
+                    let (op_prec, _) = preced_assoc(&op)?;
+                    let (w_prec, w_assoc) = preced_assoc(&w[0])?;
+                    if op_prec > w_prec || (op_prec == w_prec && w_assoc != Assoc::Right) {
+                        res_rpn.push(op.to_string());
+                        op_stack.pop();
+                    } else {
+                        break;
+                    }
+                }
+
+                op_stack.push(w[0]);
+            }
+            '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' => {
+                curr_int.push(w[0]);
+
+                // if next char is not numeric, current int parsing is done
+                if !w[1].is_numeric() {
+                    res_rpn.push(curr_int);
+                    curr_int = String::new();
                 }
             }
             _ => {
-                if w[1].is_alphanumeric() {
-                    let mut sub_vec = String::new();
-                    if (neg_count % 2) == 1 {
-                        sub_vec.push('~')
-                    }
-                    sub_vec.push(w[1]);
-                    neg_count = 0;
-
-                    if par_count > 0 {
-                        curr_term.push_str(&sub_vec);
-                    } else {
-                        res_str.push_str(&sub_vec);
-                    }
-                } else if w[1] != ' ' {
+                if w[0].is_alphabetic() {
+                    res_rpn.push(w[0].to_string());
+                } else if w[0] != ' ' {
                     return Err(ParseError::WrongChar("Wrong char".to_string()));
                 }
             }
         }
+    }
 
-        if par_count < 0 {
+    if neg_sign {
+        return Err(ParseError::DanglingNegSign());
+    }
+
+    while sign_count > 0 {
+        res_rpn.push("~".to_string());
+        sign_count -= 1;
+    }
+
+    while let Some(op) = op_stack.pop() {
+        if op == '(' {
+            return Err(ParseError::MissClosePar("Missing )".to_string()));
+        } else if op == ')' {
             return Err(ParseError::MissOpenPar("Missing (".to_string()));
         }
-    }
-    res_str.push_str(&curr_term);
-
-    if par_count > 0 {
-        return Err(ParseError::MissClosePar("Missing )".to_string()));
+        res_rpn.push(op.to_string());
     }
 
-    println!("parc_count: {}", par_count);
-    Ok(res_str)
+    Ok(res_rpn)
+}
+
+fn preced_assoc(op: &char) -> Result<(i8, Assoc), ParseError> {
+    match op {
+        '+' => Ok((2, Assoc::Both)),
+        '-' => Ok((2, Assoc::Both)),
+        '^' => Ok((3, Assoc::Both)),
+        '&' => Ok((4, Assoc::Both)),
+        '|' => Ok((4, Assoc::Both)),
+        '.' => Ok((5, Assoc::Both)),
+        '~' => Ok((6, Assoc::Right)),
+        _ => Err(ParseError::NotOp()),
+    }
 }

@@ -4,7 +4,7 @@ use std::env;
 // use crate::parser::{parse_line, read_lines};
 
 use Dobf::error::ParseError;
-use Dobf::parser::{parse_line, read_lines};
+use Dobf::parser::{parse_rpn, read_lines};
 
 //mod error;
 //mod parser;
@@ -17,7 +17,7 @@ fn main() {
         // Consumes the iterator, returns an (Optional) String
         for line_res in lines {
             if let Ok(line) = line_res {
-                match parse_line(line) {
+                match parse_rpn(line) {
                     Ok(cl_line) => println!("cleaned line: {:?}", cl_line),
                     Err(e) => println!("error cleaning {:?}", e),
                 }

@@ -2,9 +2,10 @@
 pub enum ParseError {
     MissClosePar(String),
     MissOpenPar(String),
-    SuccessiveOp(String),
+    WrongSeqChar(String),
     WrongChar(String),
-    NegSignOp(String),
+    DanglingNegSign(),
+    NotOp(),
 }
 
 pub type Result<T> = std::result::Result<T, ParseError>;
