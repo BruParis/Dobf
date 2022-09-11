@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::fs::File;
 use std::io::{self, BufRead};
 use std::path::Path;
@@ -22,10 +23,10 @@ enum Assoc {
 }
 
 // Shunting yard algorithm
-pub fn parse_rpn(mut line: String) -> Result<Vec<String>, ParseError> {
+pub fn parse_rpn(mut line: String) -> Result<VecDeque<String>, ParseError> {
     println!("expr: {}", line);
     let mut neg_sign = false;
-    let mut res_rpn: Vec<String> = Vec::new();
+    let mut res_rpn: VecDeque<String> = VecDeque::new();
     let mut sign_count = 0;
     let mut op_stack: Vec<char> = Vec::new();
     let mut curr_int = String::new();
@@ -46,7 +47,7 @@ pub fn parse_rpn(mut line: String) -> Result<Vec<String>, ParseError> {
             '(' => {
                 if "+-.^&|".contains(w[1]) {
                     return Err(ParseError::WrongSeqChar(format!(
-                        "wrong sequence of char: {}{}",
+                        "wrong seq of char: {}/{}",
                         w[0], w[1]
                     )));
                 }
@@ -62,7 +63,7 @@ pub fn parse_rpn(mut line: String) -> Result<Vec<String>, ParseError> {
                     }
 
                     if let Some(op) = op_stack.pop() {
-                        res_rpn.push(op.to_string());
+                        res_rpn.push_back(op.to_string());
                     }
                 }
 
@@ -77,13 +78,13 @@ pub fn parse_rpn(mut line: String) -> Result<Vec<String>, ParseError> {
                 // if there is a negative sign, pop and push
                 if op_stack.last() == Some(&'~') {
                     op_stack.pop();
-                    res_rpn.push('~'.to_string());
+                    res_rpn.push_back('~'.to_string());
                 }
             }
             '~' => {
                 if w[1] != '~' && !w[1].is_alphanumeric() && !"()".contains(w[1]) {
                     return Err(ParseError::WrongSeqChar(format!(
-                        "wrong sequence of char: {}{}",
+                        "wrong seq of char: {}/{}",
                         w[0], w[1]
                     )));
                 }
@@ -93,7 +94,7 @@ pub fn parse_rpn(mut line: String) -> Result<Vec<String>, ParseError> {
             '+' | '-' | '.' | '^' | '&' | '|' => {
                 if "+-.^&|".contains(w[1]) {
                     return Err(ParseError::WrongSeqChar(format!(
-                        "wrong sequence of char: {}{}",
+                        "wrong seq of char: {}/{}",
                         w[0], w[1]
                     )));
                 }
@@ -106,7 +107,7 @@ pub fn parse_rpn(mut line: String) -> Result<Vec<String>, ParseError> {
                     let (op_prec, _) = preced_assoc(&op)?;
                     let (w_prec, w_assoc) = preced_assoc(&w[0])?;
                     if op_prec > w_prec || (op_prec == w_prec && w_assoc != Assoc::Right) {
-                        res_rpn.push(op.to_string());
+                        res_rpn.push_back(op.to_string());
                         op_stack.pop();
                     } else {
                         break;
@@ -120,13 +121,20 @@ pub fn parse_rpn(mut line: String) -> Result<Vec<String>, ParseError> {
 
                 // if next char is not numeric, current int parsing is done
                 if !w[1].is_numeric() {
-                    res_rpn.push(curr_int);
+                    res_rpn.push_back(curr_int);
                     curr_int = String::new();
                 }
             }
             _ => {
                 if w[0].is_alphabetic() {
-                    res_rpn.push(w[0].to_string());
+                    if w[1].is_alphabetic() {
+                        return Err(ParseError::WrongSeqChar(format!(
+                            "wrong seq of char: {}/{}",
+                            w[0], w[1]
+                        )));
+                    }
+
+                    res_rpn.push_back(w[0].to_string());
                 } else if w[0] != ' ' {
                     return Err(ParseError::WrongChar("Wrong char".to_string()));
                 }
@@ -139,7 +147,7 @@ pub fn parse_rpn(mut line: String) -> Result<Vec<String>, ParseError> {
     }
 
     while sign_count > 0 {
-        res_rpn.push("~".to_string());
+        res_rpn.push_back("~".to_string());
         sign_count -= 1;
     }
 
@@ -149,7 +157,7 @@ pub fn parse_rpn(mut line: String) -> Result<Vec<String>, ParseError> {
         } else if op == ')' {
             return Err(ParseError::MissOpenPar("Missing (".to_string()));
         }
-        res_rpn.push(op.to_string());
+        res_rpn.push_back(op.to_string());
     }
 
     Ok(res_rpn)

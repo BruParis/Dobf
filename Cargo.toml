@@ -1,5 +1,5 @@
 [package]
-name = "Dobf"
+name = "dobf"
 version = "0.1.0"
 authors = ["BruParis <parisbruno85@gmail.com>"]
 edition = "2018"

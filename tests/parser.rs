@@ -1,8 +1,8 @@
-use Dobf::error::{ParseError, Result};
-use Dobf::parser::parse_rpn;
+use dobf::error::ParseError;
+use dobf::parser::parse_rpn;
 
 #[test]
-fn test_missing_par_simple() -> Result<()> {
+fn test_missing_par_simple() -> Result<(), ParseError> {
     let miss_cl = "(".to_string();
     let res = parse_rpn(miss_cl).unwrap_err();
     let expected = ParseError::MissClosePar("Missing )".to_string());
@@ -37,36 +37,36 @@ fn test_missing_par_simple() -> Result<()> {
 }
 
 #[test]
-fn test_succ_op() -> Result<()> {
+fn test_succ_op() -> Result<(), ParseError> {
     let miss_cl = "+ ^".to_string();
     let res = parse_rpn(miss_cl).unwrap_err();
-    let expected = ParseError::WrongSeqChar("wrong sequence of char: +^".to_string());
+    let expected = ParseError::WrongSeqChar("wrong seq of char: +/^".to_string());
     assert_eq!(res, expected);
 
     let miss_cl = "(x+y) ^ z +((x - h)^z) -+ a".to_string();
     let res = parse_rpn(miss_cl).unwrap_err();
-    let expected = ParseError::WrongSeqChar("wrong sequence of char: -+".to_string());
+    let expected = ParseError::WrongSeqChar("wrong seq of char: -/+".to_string());
     assert_eq!(res, expected);
 
     Ok(())
 }
 
 #[test]
-fn test_neg_sign_before_op() -> Result<()> {
+fn test_neg_sign_before_op() -> Result<(), ParseError> {
     let miss_cl = "~+".to_string();
     let res = parse_rpn(miss_cl).unwrap_err();
-    let expected = ParseError::WrongSeqChar("wrong sequence of char: ~+".to_string());
+    let expected = ParseError::WrongSeqChar("wrong seq of char: ~/+".to_string());
     assert_eq!(res, expected);
 
     let miss_cl = "x + y - ~~|y".to_string();
     let res = parse_rpn(miss_cl).unwrap_err();
-    let expected = ParseError::WrongSeqChar("wrong sequence of char: ~|".to_string());
+    let expected = ParseError::WrongSeqChar("wrong seq of char: ~/|".to_string());
     assert_eq!(res, expected);
     Ok(())
 }
 
 #[test]
-fn test_ok_neg() -> Result<()> {
+fn test_ok_neg() -> Result<(), ParseError> {
     let miss_cl = "~~~y".to_string();
     let res = parse_rpn(miss_cl).unwrap();
     let expected = vec!["y", "~"];
@@ -82,7 +82,7 @@ fn test_ok_neg() -> Result<()> {
 }
 
 #[test]
-fn test_ok() -> Result<()> {
+fn test_ok() -> Result<(), ParseError> {
     let miss_cl = "y+((((x+y)^z)))".to_string();
     let res = parse_rpn(miss_cl).unwrap();
     let expected = vec!["y", "x", "y", "+", "z", "^", "+"];

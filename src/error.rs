@@ -8,4 +8,13 @@ pub enum ParseError {
     NotOp(),
 }
 
-pub type Result<T> = std::result::Result<T, ParseError>;
+#[derive(Debug, PartialEq)]
+pub enum DAGError {
+    RPNEmpty(),
+    RPNSyntaxError(),
+    SingleTerm(),
+    VarError(),
+}
+
+//pub type Result<T> = std::result::Result<T, ParseError>;
+//pub type Result<T> = std::result::Result<T, DAGError>;
