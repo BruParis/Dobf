@@ -1,13 +1,25 @@
 use crate::error::DAGError;
 use std::collections::VecDeque;
-use std::fmt;
+use std::fmt::{self, Debug, Display, Formatter};
 
 pub trait DAGTrait: std::fmt::Debug {
+    fn is_cst(&self) -> bool;
+    fn is_mba(&self) -> bool;
+    fn is_mba_term(&self) -> bool;
     fn bitwise(&self) -> bool;
     fn valid(&self) -> bool;
 }
 
 impl DAGTrait for Box<dyn DAGTrait> {
+    fn is_cst(&self) -> bool {
+        self.as_ref().is_cst()
+    }
+    fn is_mba(&self) -> bool {
+        self.as_ref().is_mba()
+    }
+    fn is_mba_term(&self) -> bool {
+        self.as_ref().is_mba_term()
+    }
     fn valid(&self) -> bool {
         self.as_ref().valid()
     }
@@ -17,18 +29,33 @@ impl DAGTrait for Box<dyn DAGTrait> {
     }
 }
 
-struct DAGLeaf<L: fmt::Debug> {
-    value: L,
+#[derive(Debug)]
+pub enum DAGValue {
+    U32(u32),
+    Var(char),
+}
+
+impl Display for DAGValue {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            DAGValue::U32(u) => write!(f, "{}", u),
+            DAGValue::Var(c) => write!(f, "{}", c),
+        }
+    }
+}
+
+struct DAGLeaf {
+    value: DAGValue,
     sign: bool,
 }
 
-impl<L: fmt::Debug> DAGLeaf<L> {
-    pub fn new(value: L, sign: bool) -> Self {
+impl DAGLeaf {
+    pub fn new(value: DAGValue, sign: bool) -> Self {
         DAGLeaf { value, sign }
     }
 }
 
-impl<L: fmt::Debug + fmt::Display> fmt::Debug for DAGLeaf<L> {
+impl Debug for DAGLeaf {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.sign {
             return write!(f, "{}", self.value);
@@ -38,7 +65,19 @@ impl<L: fmt::Debug + fmt::Display> fmt::Debug for DAGLeaf<L> {
     }
 }
 
-impl<L: fmt::Debug + fmt::Display> DAGTrait for DAGLeaf<L> {
+impl DAGTrait for DAGLeaf {
+    fn is_cst(&self) -> bool {
+        match self.value {
+            DAGValue::U32(u) => true,
+            DAGValue::Var(c) => false,
+        }
+    }
+    fn is_mba(&self) -> bool {
+        true
+    }
+    fn is_mba_term(&self) -> bool {
+        true
+    }
     fn valid(&self) -> bool {
         true
     }
@@ -77,6 +116,38 @@ impl DAGNode {
 }
 
 impl DAGTrait for DAGNode {
+    fn is_cst(&self) -> bool {
+        self.ch.iter().all(|ch| ch.is_cst())
+    }
+    fn is_mba(&self) -> bool {
+        match self.op {
+            '+' => self.ch.iter().all(|ch| ch.is_mba_term()),
+            '.' => self.is_mba_term(),
+            _ => self.ch.iter().all(|ch| ch.bitwise()),
+        }
+    }
+
+    fn is_mba_term(&self) -> bool {
+        match self.op {
+            '+' => false,
+            '.' => {
+                let mut node_count = 0;
+                return self.ch.iter().all(move |ch| {
+                    if !ch.is_cst() {
+                        node_count += 1;
+                    }
+
+                    if node_count > 1 {
+                        return false;
+                    }
+
+                    return ch.bitwise();
+                });
+            }
+            _ => self.ch.iter().all(|ch| ch.bitwise()),
+        }
+    }
+
     fn valid(&self) -> bool {
         if self.ch.len() < 2 {
             return false;
@@ -195,9 +266,9 @@ impl DAGFactory {
                 _ => {
                     let leaf: Box<dyn DAGTrait>;
                     if let Ok(term_u) = elem.parse::<u32>() {
-                        leaf = Box::new(DAGLeaf::<u32>::new(term_u, curr_sign));
+                        leaf = Box::new(DAGLeaf::new(DAGValue::U32(term_u), curr_sign));
                     } else if let (true, Some(c_var)) = (elem.len() == 1, elem.chars().next()) {
-                        leaf = Box::new(DAGLeaf::<char>::new(c_var, curr_sign));
+                        leaf = Box::new(DAGLeaf::new(DAGValue::Var(c_var), curr_sign));
                     } else {
                         return Err(DAGError::RPNSyntaxError());
                     }
