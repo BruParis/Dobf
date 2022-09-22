@@ -68,8 +68,8 @@ impl Debug for DAGLeaf {
 impl DAGTrait for DAGLeaf {
     fn is_cst(&self) -> bool {
         match self.value {
-            DAGValue::U32(u) => true,
-            DAGValue::Var(c) => false,
+            DAGValue::U32(_) => true,
+            DAGValue::Var(_) => false,
         }
     }
     fn is_mba(&self) -> bool {
@@ -82,7 +82,10 @@ impl DAGTrait for DAGLeaf {
         true
     }
     fn bitwise(&self) -> bool {
-        true
+        match self.value {
+            DAGValue::U32(_) => false,
+            DAGValue::Var(_) => true,
+        }
     }
 }
 
@@ -133,10 +136,10 @@ impl DAGTrait for DAGNode {
             '.' => {
                 let mut node_count = 0;
                 return self.ch.iter().all(move |ch| {
-                    if !ch.is_cst() {
-                        node_count += 1;
+                    if ch.is_cst() {
+                        return true;
                     }
-
+                    node_count += 1;
                     if node_count > 1 {
                         return false;
                     }

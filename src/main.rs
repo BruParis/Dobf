@@ -24,8 +24,9 @@ fn main() {
                 match parse_rpn(line) {
                     Ok(cl_line) => {
                         println!("cleaned line: {:?}", cl_line);
-                        let dag = DAGFactory::new_dag(&mut cl_line.clone());
-                        println!("dag: {:#?}", dag);
+                        let dag = DAGFactory::new_dag(&mut cl_line.clone()).unwrap();
+                        let is_mba = dag.is_mba();
+                        println!("      -> is_mba: {:#?}", is_mba);
                     }
                     Err(e) => println!("error cleaning {:?}", e),
                 }
