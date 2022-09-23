@@ -1,31 +1,61 @@
 use crate::error::DAGError;
+use std::collections::BTreeSet;
 use std::collections::VecDeque;
-use std::fmt::{self, Debug, Display, Formatter};
+use std::fmt::{self, Debug, Display};
+use std::iter::FromIterator;
 
 pub trait DAGTrait: std::fmt::Debug {
     fn is_cst(&self) -> bool;
-    fn is_mba(&self) -> bool;
-    fn is_mba_term(&self) -> bool;
     fn bitwise(&self) -> bool;
-    fn valid(&self) -> bool;
 }
 
-impl DAGTrait for Box<dyn DAGTrait> {
-    fn is_cst(&self) -> bool {
-        self.as_ref().is_cst()
+pub enum DAGEnum {
+    Node(Box<DAGNode>),
+    Leaf(DAGLeaf),
+}
+
+impl fmt::Debug for DAGEnum {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            DAGEnum::Node(n) => write!(f, "{:?}", n),
+            DAGEnum::Leaf(l) => write!(f, "{:?}", l),
+        };
+
+        Ok(())
     }
-    fn is_mba(&self) -> bool {
-        self.as_ref().is_mba()
+}
+
+impl DAGEnum {
+    fn is_cst(&self) -> bool {
+        match self {
+            DAGEnum::Node(n) => n.is_cst(),
+            DAGEnum::Leaf(l) => l.is_cst(),
+        }
+    }
+    pub fn is_mba(&self) -> bool {
+        match self {
+            DAGEnum::Node(n) => n.is_mba(),
+            DAGEnum::Leaf(l) => true,
+        }
     }
     fn is_mba_term(&self) -> bool {
-        self.as_ref().is_mba_term()
+        match self {
+            DAGEnum::Node(n) => n.is_mba_term(),
+            DAGEnum::Leaf(_) => true,
+        }
     }
     fn valid(&self) -> bool {
-        self.as_ref().valid()
+        match self {
+            DAGEnum::Node(n) => n.valid(),
+            DAGEnum::Leaf(l) => true,
+        }
     }
 
-    fn bitwise(&self) -> bool {
-        self.as_ref().bitwise()
+    pub fn bitwise(&self) -> bool {
+        match self {
+            DAGEnum::Node(n) => n.bitwise(),
+            DAGEnum::Leaf(l) => l.bitwise(),
+        }
     }
 }
 
@@ -44,7 +74,7 @@ impl Display for DAGValue {
     }
 }
 
-struct DAGLeaf {
+pub struct DAGLeaf {
     value: DAGValue,
     b_sign: bool,
     pos: bool,
@@ -74,15 +104,6 @@ impl DAGTrait for DAGLeaf {
             DAGValue::Var(_) => false,
         }
     }
-    fn is_mba(&self) -> bool {
-        true
-    }
-    fn is_mba_term(&self) -> bool {
-        true
-    }
-    fn valid(&self) -> bool {
-        true
-    }
     fn bitwise(&self) -> bool {
         match self.value {
             DAGValue::U32(_) => false,
@@ -96,11 +117,12 @@ struct ExpVar {
     var: char,
 }
 
-struct DAGNode {
+pub struct DAGNode {
     op: char,
-    ch: Box<Vec<Box<dyn DAGTrait>>>,
+    ch: Box<Vec<DAGEnum>>,
     b_sign: bool,
     pos: bool,
+    vars: BTreeSet<char>,
 }
 
 impl DAGNode {
@@ -110,21 +132,8 @@ impl DAGNode {
             ch: Box::new(Vec::new()),
             b_sign,
             pos,
+            vars: BTreeSet::new(),
         })
-    }
-
-    fn push_ch(&mut self, ch: Box<dyn DAGTrait>) {
-        self.ch.push(ch);
-    }
-
-    fn push_ch_vec(&mut self, ch: &mut Vec<Box<dyn DAGTrait>>) {
-        self.ch.append(ch);
-    }
-}
-
-impl DAGTrait for DAGNode {
-    fn is_cst(&self) -> bool {
-        self.ch.iter().all(|ch| ch.is_cst())
     }
     fn is_mba(&self) -> bool {
         match self.op {
@@ -162,6 +171,13 @@ impl DAGTrait for DAGNode {
 
         self.ch.iter().all(|ch| ch.valid())
     }
+}
+
+impl DAGTrait for DAGNode {
+    fn is_cst(&self) -> bool {
+        self.ch.iter().all(|ch| ch.is_cst())
+    }
+
     fn bitwise(&self) -> bool {
         if "+.".contains(self.op) {
             return false;
@@ -201,16 +217,52 @@ impl fmt::Debug for DAGNode {
 
 pub struct DAGFactory;
 impl DAGFactory {
-    pub fn new_dag(rpn: &mut VecDeque<String>) -> Result<Box<dyn DAGTrait>, DAGError> {
-        let node = DAGFactory::build_dag(rpn)?;
+    pub fn new_dag(rpn: &mut VecDeque<String>) -> Result<DAGEnum, DAGError> {
+        let mut dag = DAGFactory::build_dag(rpn)?;
 
-        if !node.valid() {
-            return Err(DAGError::RPNSyntaxError());
+        match dag {
+            DAGEnum::Node(ref mut n) => {
+                DAGFactory::collect_vars(n.as_mut());
+                if !n.valid() {
+                    return Err(DAGError::RPNSyntaxError());
+                }
+            }
+            _ => (),
         }
 
-        Ok(node)
+        return Ok(dag);
     }
-    fn build_dag(rpn: &mut VecDeque<String>) -> Result<Box<dyn DAGTrait>, DAGError> {
+
+    fn collect_vars(node: &mut DAGNode) {
+        println!("collect vars {:?}", node);
+        node.vars = node
+            .ch
+            .iter_mut()
+            .map(|c| match c {
+                DAGEnum::Node(n) => {
+                    DAGFactory::collect_vars(n.as_mut());
+                    println!("  -> c.vars {:?}", n.vars);
+                    Some(Vec::from_iter(n.vars.clone()))
+                }
+                DAGEnum::Leaf(l) => match l.value {
+                    DAGValue::Var(v) => Some(vec![v]),
+                    _ => None,
+                },
+            })
+            .flatten()
+            .flatten()
+            .collect::<BTreeSet<char>>();
+    }
+
+    fn push_ch(node: &mut DAGNode, ch: DAGEnum) {
+        node.ch.push(ch);
+    }
+
+    fn push_ch_vec(node: &mut DAGNode, ch: &mut Vec<DAGEnum>) {
+        node.ch.append(ch);
+    }
+
+    fn build_dag(rpn: &mut VecDeque<String>) -> Result<DAGEnum, DAGError> {
         fn take_node_stack(
             curr_node: &mut Option<Box<DAGNode>>,
             node_stack: &mut VecDeque<Box<DAGNode>>,
@@ -219,9 +271,9 @@ impl DAGFactory {
             if let Some(mut node) = curr_node.take() {
                 if let (true, Some(par_node)) = (node.ch.len() > 1, node_stack.back_mut()) {
                     if par_node.op == node.op {
-                        par_node.push_ch_vec(&mut node.ch);
+                        DAGFactory::push_ch_vec(par_node, &mut node.ch);
                     } else {
-                        par_node.push_ch(node);
+                        DAGFactory::push_ch(par_node, DAGEnum::Node(node));
                     }
 
                     if pop_stack {
@@ -285,20 +337,20 @@ impl DAGFactory {
                     curr_b_sign = false;
                 }
                 _ => {
-                    let leaf: Box<dyn DAGTrait>;
+                    let leaf: DAGLeaf;
                     if let Ok(term_u) = elem.parse::<u32>() {
-                        leaf = Box::new(DAGLeaf::new(DAGValue::U32(term_u), curr_b_sign, curr_pos));
+                        leaf = DAGLeaf::new(DAGValue::U32(term_u), curr_b_sign, curr_pos);
                     } else if let (true, Some(c_var)) = (elem.len() == 1, elem.chars().next()) {
-                        leaf = Box::new(DAGLeaf::new(DAGValue::Var(c_var), curr_b_sign, curr_pos));
+                        leaf = DAGLeaf::new(DAGValue::Var(c_var), curr_b_sign, curr_pos);
                     } else {
                         return Err(DAGError::RPNSyntaxError());
                     }
 
                     match curr_node.as_mut() {
-                        Some(node) => node.push_ch(leaf),
+                        Some(node) => DAGFactory::push_ch(node, DAGEnum::Leaf(leaf)),
                         None => {
                             if rpn.len() == 0 {
-                                return Ok(leaf);
+                                return Ok(DAGEnum::Leaf(leaf));
                             }
                             return Err(DAGError::RPNSyntaxError());
                         }
@@ -324,13 +376,55 @@ impl DAGFactory {
         );
 
         if let Some(node) = curr_node {
-            return Ok(node);
+            return Ok(DAGEnum::Node(node));
         }
 
         if let (true, Some(node)) = (node_stack.len() == 1, node_stack.pop_back()) {
-            return Ok(node);
+            return Ok(DAGEnum::Node(node));
         }
 
         Err(DAGError::RPNSyntaxError())
+    }
+}
+
+mod test {
+    use std::collections::BTreeSet;
+
+    use super::{DAGEnum, DAGFactory, DAGNode};
+    use crate::error::DAGError;
+    use crate::parser::parse_rpn;
+
+    #[test]
+    fn test_ok_vars() -> Result<(), DAGError> {
+        let expr = "x^y^(t|y^(t+a))".to_string();
+        let res = DAGFactory::new_dag(&mut parse_rpn(expr).unwrap())?;
+        let mut expected = BTreeSet::new();
+        expected.insert('x');
+        expected.insert('y');
+        expected.insert('t');
+        expected.insert('a');
+        assert!(if let DAGEnum::Node(n) = res {
+            assert_eq!(n.vars, expected);
+            true
+        } else {
+            false
+        });
+
+        let expr = "(t+a)^123.a^(x+y)^(c+y)".to_string();
+        let res = DAGFactory::new_dag(&mut parse_rpn(expr).unwrap())?;
+        let mut expected = BTreeSet::new();
+        expected.insert('a');
+        expected.insert('c');
+        expected.insert('t');
+        expected.insert('x');
+        expected.insert('y');
+        assert!(if let DAGEnum::Node(n) = res {
+            assert_eq!(n.vars, expected);
+            true
+        } else {
+            false
+        });
+
+        Ok(())
     }
 }
