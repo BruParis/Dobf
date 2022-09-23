@@ -8,6 +8,10 @@ fn test_bitwise() -> Result<(), DAGError> {
     let dag = DAGFactory::new_dag(&mut parse_rpn(expr).unwrap())?;
     assert_eq!(dag.bitwise(), false);
 
+    let expr = "32^a".to_string();
+    let dag = DAGFactory::new_dag(&mut parse_rpn(expr).unwrap())?;
+    assert_eq!(dag.bitwise(), false);
+
     let expr = "x+y^a".to_string();
     let dag = DAGFactory::new_dag(&mut parse_rpn(expr).unwrap())?;
     assert_eq!(dag.bitwise(), false);
@@ -49,6 +53,18 @@ fn test_mba() -> Result<(), DAGError> {
     let dag = DAGFactory::new_dag(&mut parse_rpn(expr).unwrap())?;
     assert_eq!(dag.is_mba(), false);
 
+    let expr = "x+(z^4)".to_string();
+    let dag = DAGFactory::new_dag(&mut parse_rpn(expr).unwrap())?;
+    assert_eq!(dag.is_mba(), false);
+
+    let expr = "x+4.(z^3.x)".to_string();
+    let dag = DAGFactory::new_dag(&mut parse_rpn(expr).unwrap())?;
+    assert_eq!(dag.is_mba(), false);
+
+    let expr = "x+y+4&z".to_string();
+    let dag = DAGFactory::new_dag(&mut parse_rpn(expr).unwrap())?;
+    assert_eq!(dag.is_mba(), false);
+
     let expr = "x".to_string();
     let dag = DAGFactory::new_dag(&mut parse_rpn(expr).unwrap())?;
     assert_eq!(dag.is_mba(), true);
@@ -78,10 +94,6 @@ fn test_mba() -> Result<(), DAGError> {
     assert_eq!(dag.is_mba(), true);
 
     let expr = "x+y+4.z".to_string();
-    let dag = DAGFactory::new_dag(&mut parse_rpn(expr).unwrap())?;
-    assert_eq!(dag.is_mba(), true);
-
-    let expr = "x+y+4&z".to_string();
     let dag = DAGFactory::new_dag(&mut parse_rpn(expr).unwrap())?;
     assert_eq!(dag.is_mba(), true);
 

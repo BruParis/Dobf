@@ -68,6 +68,36 @@ fn test_ok_simple() -> Result<(), DAGError> {
 }
 
 #[test]
+fn test_ok_neg() -> Result<(), DAGError> {
+    let expr = "x-y".to_string();
+    let dag = DAGFactory::new_dag(&mut parse_rpn(expr).unwrap())?;
+    let expected = "+-y;x/".to_string();
+    assert_eq!(format!("{:?}", dag), expected);
+
+    let expr = "x-y+z".to_string();
+    let dag = DAGFactory::new_dag(&mut parse_rpn(expr).unwrap())?;
+    let expected = "+z;-y;x/".to_string();
+    assert_eq!(format!("{:?}", dag), expected);
+
+    let expr = "x-y+(z-t)".to_string();
+    let dag = DAGFactory::new_dag(&mut parse_rpn(expr).unwrap())?;
+    let expected = "+-t;z;-y;x/".to_string();
+    assert_eq!(format!("{:?}", dag), expected);
+
+    let expr = "x-y+(z^(t-u))".to_string();
+    let dag = DAGFactory::new_dag(&mut parse_rpn(expr).unwrap())?;
+    let expected = "+^+-u;t/;z/;-y;x/".to_string();
+    assert_eq!(format!("{:?}", dag), expected);
+
+    let expr = "x-~y+z".to_string();
+    let dag = DAGFactory::new_dag(&mut parse_rpn(expr).unwrap())?;
+    let expected = "+z;-~y;x/".to_string();
+    assert_eq!(format!("{:?}", dag), expected);
+
+    Ok(())
+}
+
+#[test]
 fn test_ok_complex() -> Result<(), DAGError> {
     let expr = "(t+a)^123.a^(x+y)^(c+y)".to_string();
     let dag = DAGFactory::new_dag(&mut parse_rpn(expr).unwrap())?;

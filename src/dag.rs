@@ -46,21 +46,23 @@ impl Display for DAGValue {
 
 struct DAGLeaf {
     value: DAGValue,
-    sign: bool,
+    b_sign: bool,
+    pos: bool,
 }
 
 impl DAGLeaf {
-    pub fn new(value: DAGValue, sign: bool) -> Self {
-        DAGLeaf { value, sign }
+    pub fn new(value: DAGValue, b_sign: bool, pos: bool) -> Self {
+        DAGLeaf { value, b_sign, pos }
     }
 }
 
 impl Debug for DAGLeaf {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.sign {
-            return write!(f, "{}", self.value);
-        } else {
-            return write!(f, "~{}", self.value);
+        match (self.pos, self.b_sign) {
+            (false, false) => write!(f, "-~{}", self.value),
+            (false, true) => write!(f, "-{}", self.value),
+            (true, false) => write!(f, "~{}", self.value),
+            _ => write!(f, "{}", self.value),
         }
     }
 }
@@ -97,15 +99,17 @@ struct ExpVar {
 struct DAGNode {
     op: char,
     ch: Box<Vec<Box<dyn DAGTrait>>>,
-    sign: bool,
+    b_sign: bool,
+    pos: bool,
 }
 
 impl DAGNode {
-    pub fn new(op: char, sign: bool) -> Result<Self, DAGError> {
+    pub fn new(op: char, b_sign: bool, pos: bool) -> Result<Self, DAGError> {
         Ok(DAGNode {
             op,
             ch: Box::new(Vec::new()),
-            sign,
+            b_sign,
+            pos,
         })
     }
 
@@ -168,11 +172,13 @@ impl DAGTrait for DAGNode {
 
 impl fmt::Debug for DAGNode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.sign {
-            write!(f, "{}", self.op);
-        } else {
-            write!(f, "~{}", self.op);
-        }
+        let closed_par = !self.pos || !self.b_sign;
+        match (self.pos, self.b_sign) {
+            (false, false) => write!(f, "-~({}", self.op),
+            (false, true) => write!(f, "-({}", self.op),
+            (true, false) => write!(f, "~({}", self.op),
+            _ => write!(f, "{}", self.op),
+        };
 
         let mut it_ch = self.ch.iter().peekable();
         while let Some(ch) = it_ch.next() {
@@ -181,6 +187,10 @@ impl fmt::Debug for DAGNode {
             } else {
                 write!(f, "{:#?};", ch);
             }
+        }
+
+        if closed_par {
+            write!(f, ")/");
         }
 
         write!(f, "/");
@@ -230,7 +240,8 @@ impl DAGFactory {
 
         let mut prev_leaf = false;
         let mut curr_node: Option<Box<DAGNode>> = None;
-        let mut curr_sign = true;
+        let mut curr_b_sign = true;
+        let mut curr_pos = true;
         let mut node_stack: VecDeque<Box<DAGNode>> = VecDeque::new();
 
         while let Some(elem) = rpn.pop_back() {
@@ -244,7 +255,14 @@ impl DAGFactory {
             match elem.as_str() {
                 "+" | "-" | "." | "^" | "&" | "|" => {
                     prev_leaf = false;
-                    if let Some(new_op) = elem.chars().next() {
+                    if let Some(mut new_op) = elem.chars().next() {
+                        let this_pos = curr_pos;
+                        let neg = new_op == '-';
+                        if neg {
+                            new_op = '+';
+                            curr_pos = false;
+                        }
+
                         if let Some(node) = curr_node.as_deref() {
                             if node.op == new_op {
                                 continue;
@@ -253,25 +271,25 @@ impl DAGFactory {
 
                         take_node_stack(&mut curr_node, &mut node_stack, false);
 
-                        curr_node = Some(Box::new(DAGNode::new(new_op, curr_sign)?));
+                        curr_node = Some(Box::new(DAGNode::new(new_op, curr_b_sign, this_pos)?));
                     } else {
                         unreachable!()
                     }
 
-                    curr_sign = true;
+                    curr_b_sign = true;
                 }
                 "~" => {
-                    if !curr_sign {
+                    if !curr_b_sign {
                         return Err(DAGError::RPNSyntaxError());
                     }
-                    curr_sign = false;
+                    curr_b_sign = false;
                 }
                 _ => {
                     let leaf: Box<dyn DAGTrait>;
                     if let Ok(term_u) = elem.parse::<u32>() {
-                        leaf = Box::new(DAGLeaf::new(DAGValue::U32(term_u), curr_sign));
+                        leaf = Box::new(DAGLeaf::new(DAGValue::U32(term_u), curr_b_sign, curr_pos));
                     } else if let (true, Some(c_var)) = (elem.len() == 1, elem.chars().next()) {
-                        leaf = Box::new(DAGLeaf::new(DAGValue::Var(c_var), curr_sign));
+                        leaf = Box::new(DAGLeaf::new(DAGValue::Var(c_var), curr_b_sign, curr_pos));
                     } else {
                         return Err(DAGError::RPNSyntaxError());
                     }
@@ -290,7 +308,8 @@ impl DAGFactory {
                         take_node_stack(&mut curr_node, &mut node_stack, true);
                     }
 
-                    curr_sign = true;
+                    curr_pos = true;
+                    curr_b_sign = true;
                     prev_leaf = true;
                 }
             }
