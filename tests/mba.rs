@@ -1,5 +1,5 @@
-use dobf::dag::DAGFactory;
 use dobf::error::DAGError;
+use dobf::factory::DAGFactory;
 use dobf::parser::parse_rpn;
 
 #[test]

@@ -3,7 +3,7 @@ use std::env;
 // use crate::error::ParseError;
 // use crate::parser::{parse_line, read_lines};
 
-use dobf::dag::{DAGEnum, DAGFactory};
+use dobf::factory::DAGFactory;
 
 use dobf::parser::{parse_rpn, read_lines};
 
