@@ -61,10 +61,10 @@ fn test_ok_neg() -> Result<(), ExprError> {
     assert_eq!(res, "+x-yz-t/".to_string());
 
     let res = get_expr_str("x-y+(z^(t-u))".to_string())?;
-    assert_eq!(res, "+^+-ut/z/-yx/".to_string());
+    assert_eq!(res, "+x-y^z+t-u///".to_string());
 
     let res = get_expr_str("x-~y+z".to_string())?;
-    assert_eq!(res, "+z-~yx/".to_string());
+    assert_eq!(res, "+x-~yz/".to_string());
 
     Ok(())
 }
@@ -73,6 +73,29 @@ fn test_ok_neg() -> Result<(), ExprError> {
 fn test_ok_complex() -> Result<(), ExprError> {
     let res = get_expr_str("(t+a)^123.a^(x+y)^(c+y)".to_string())?;
     assert_eq!(res, "^+ta/.123a/+xy/+cy//".to_string());
+
+    Ok(())
+}
+
+#[test]
+fn test_from_ok_parser() -> Result<(), ExprError> {
+    let res = get_expr_str("y+((((x+y)^z)))".to_string())?;
+    assert_eq!(res, "+y^+xy/z//".to_string());
+
+    let res = get_expr_str("x+y-(x^y)".to_string())?;
+    assert_eq!(res, "+xy-(^xy/)/".to_string());
+
+    let res = get_expr_str("x + y -(x^y)&((x -y)^y)".to_string())?;
+    assert_eq!(res, "+xy-(&^xy/^+x-y/y/)//".to_string());
+
+    let res = get_expr_str("x + (y) -(x^y+(~y))".to_string())?;
+    assert_eq!(res, "+xy-(+^xy/~y/)/".to_string());
+
+    let res = get_expr_str("8458.(y&t&z) ^( x|y&z)&((x&y )& y|t) + x+ 9.(x|y)&y|z".to_string())?;
+    assert_eq!(
+        res,
+        "+.8458&ytz//^|xy/&z|&xyy/t///x|&.9|xy//y/z//".to_string()
+    );
 
     Ok(())
 }

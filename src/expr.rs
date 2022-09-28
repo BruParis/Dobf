@@ -3,29 +3,27 @@ use std::fmt::{self, Debug, Display};
 
 pub struct Expr {
     pub op: char,
-    pub b_sign: bool,
-    pub pos: bool,
+    pub sign: String,
     pub vars: Box<BTreeSet<char>>,
 }
 
 impl Expr {
-    pub fn new(op: char, b_sign: bool, pos: bool) -> Self {
+    pub fn new(op: char, sign: String) -> Self {
         Expr {
             op,
-            b_sign,
-            pos,
+            sign,
             vars: Box::new(BTreeSet::new()),
         }
     }
 
     pub fn pref_suff(&self, p_str: &mut String, s_str: &mut String) {
-        let closed_par = !self.pos || !self.b_sign;
-        match (self.pos, self.b_sign) {
-            (false, false) => *p_str = format!("-~({}", self.op) + p_str,
-            (false, true) => *p_str = format!("-({}", self.op) + p_str,
-            (true, false) => *p_str = format!("~({}", self.op) + p_str,
-            _ => *p_str = format!("{}", self.op) + &p_str,
-        };
+        let closed_par = self.sign.len() > 0;
+        if self.sign.len() > 0 {
+            *p_str = format!("{}({}{}", &self.sign, &self.op, p_str);
+        //*p_str = &self.sign + "(" + &self.op.to_string() + p_str;
+        } else {
+            *p_str = self.op.to_string() + p_str;
+        }
 
         if closed_par {
             s_str.push(')');
@@ -41,18 +39,19 @@ pub enum ExprOperand {
 
 pub struct Term {
     pub val: ExprVal,
-    pub b_sign: bool,
-    pub pos: bool,
+    pub sign: String,
 }
 
 impl Debug for Term {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match (self.pos, self.b_sign) {
+        let res = format!("{}{:?}", self.sign, self.val);
+        write!(f, "{}", res)
+        /*match (self.pos, self.b_sign) {
             (false, false) => write!(f, "-~{:?}", self.val),
             (false, true) => write!(f, "-{:?}", self.val),
             (true, false) => write!(f, "~{:?}", self.val),
             _ => write!(f, "{:?}", self.val),
-        }
+        }*/
     }
 }
 

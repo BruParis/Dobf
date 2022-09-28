@@ -1,6 +1,7 @@
 use std::collections::VecDeque;
 use std::fs::File;
 use std::io::{self, BufRead};
+use std::mem;
 use std::path::Path;
 
 use crate::error::ParseError;
@@ -25,10 +26,8 @@ enum Assoc {
 // Shunting yard algorithm
 pub fn parse_rpn(mut line: String) -> Result<VecDeque<String>, ParseError> {
     println!("expr: {}", line);
-    let mut neg_sign = false;
     let mut res_rpn: VecDeque<String> = VecDeque::new();
-    let mut sign_count = 0;
-    let mut op_stack: Vec<char> = Vec::new();
+    let mut op_stack: Vec<String> = Vec::new();
     let mut curr_int = String::new();
 
     // remove whitespace
@@ -38,25 +37,20 @@ pub fn parse_rpn(mut line: String) -> Result<VecDeque<String>, ParseError> {
 
     let inter = line.chars().collect::<Vec<char>>();
     for w in inter.windows(2) {
-        if neg_sign && w[0] != '~' {
-            op_stack.push('~');
-            neg_sign = false;
-        }
-
         match w[0] {
             '(' => {
-                if "+-.^&|".contains(w[1]) {
+                if "+.^&|".contains(w[1]) {
                     return Err(ParseError::WrongSeqChar(format!(
                         "wrong seq of char: {}/{}",
                         w[0], w[1]
                     )));
                 }
 
-                op_stack.push('(');
+                op_stack.push("(".to_owned());
             }
             ')' => {
                 // while there is no openning parenthesis at top of stack...
-                while op_stack.last() != Some(&'(') {
+                while op_stack.last() != Some(&"(".to_owned()) {
                     // ... check stack is not empty (or else it means a mismatch in parenthesis)
                     if op_stack.len() == 0 {
                         return Err(ParseError::MissOpenPar("Missing (".to_string()));
@@ -69,30 +63,32 @@ pub fn parse_rpn(mut line: String) -> Result<VecDeque<String>, ParseError> {
 
                 // ... check there is indeed an openning parenthesis at top of stack
                 // ... and discard it
-                if op_stack.last() == Some(&'(') {
+                if op_stack.last() == Some(&"(".to_owned()) {
                     op_stack.pop();
                 } else {
                     return Err(ParseError::MissOpenPar("Missing (".to_string()));
                 }
 
                 // if there is a negative sign, pop and push
-                if op_stack.last() == Some(&'~') {
-                    op_stack.pop();
-                    res_rpn.push_back('~'.to_string());
+                if let Some(op) = op_stack.last() {
+                    if op.len() > 1 {
+                        op_stack.pop();
+                        res_rpn.push_back('~'.to_string());
+                    }
                 }
             }
-            '~' => {
-                if w[1] != '~' && !w[1].is_alphanumeric() && !"()".contains(w[1]) {
+            '-' | '~' => {
+                if !w[1].is_alphanumeric() && !"()-~".contains(w[1]) {
                     return Err(ParseError::WrongSeqChar(format!(
                         "wrong seq of char: {}/{}",
                         w[0], w[1]
                     )));
                 }
 
-                neg_sign = !neg_sign;
+                op_stack.push(w[0].to_string());
             }
-            '+' | '-' | '.' | '^' | '&' | '|' => {
-                if "+-.^&|".contains(w[1]) {
+            '+' | '.' | '^' | '&' | '|' => {
+                if "+.^&|".contains(w[1]) {
                     return Err(ParseError::WrongSeqChar(format!(
                         "wrong seq of char: {}/{}",
                         w[0], w[1]
@@ -100,12 +96,12 @@ pub fn parse_rpn(mut line: String) -> Result<VecDeque<String>, ParseError> {
                 }
 
                 while let Some(op) = op_stack.last() {
-                    if op == &'(' || op_stack.len() == 0 {
+                    if op == "(" || op_stack.len() == 0 {
                         break;
                     }
 
                     let (op_prec, _) = preced_assoc(&op)?;
-                    let (w_prec, w_assoc) = preced_assoc(&w[0])?;
+                    let (w_prec, w_assoc) = preced_assoc(&w[0].to_string())?;
                     if op_prec > w_prec || (op_prec == w_prec && w_assoc != Assoc::Right) {
                         res_rpn.push_back(op.to_string());
                         op_stack.pop();
@@ -114,7 +110,7 @@ pub fn parse_rpn(mut line: String) -> Result<VecDeque<String>, ParseError> {
                     }
                 }
 
-                op_stack.push(w[0]);
+                op_stack.push(w[0].to_string());
             }
             '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' => {
                 curr_int.push(w[0]);
@@ -142,36 +138,54 @@ pub fn parse_rpn(mut line: String) -> Result<VecDeque<String>, ParseError> {
         }
     }
 
-    if neg_sign {
-        return Err(ParseError::DanglingNegSign());
-    }
-
-    while sign_count > 0 {
-        res_rpn.push_back("~".to_string());
-        sign_count -= 1;
-    }
-
     while let Some(op) = op_stack.pop() {
-        if op == '(' {
+        if op == "(" {
             return Err(ParseError::MissClosePar("Missing )".to_string()));
-        } else if op == ')' {
+        } else if op == ")" {
             return Err(ParseError::MissOpenPar("Missing (".to_string()));
         }
         res_rpn.push_back(op.to_string());
     }
 
-    Ok(res_rpn)
+    // '-' is can be binary or unary operator
+    // if binary operator, convert to unary with use of add ('-' -> '-', '+')
+    let mut num_term = 0;
+    let mut aux_rpn: VecDeque<String> = VecDeque::new();
+    while let Some(e) = res_rpn.pop_front() {
+        if e.chars().all(|c| c.is_alphanumeric()) {
+            num_term += 1;
+        }
+
+        // '-' could be a binary op.
+        if e.chars().all(|c| "+-.&^|".contains(c)) {
+            num_term = 0;
+        }
+
+        // not necessary
+        if num_term < 0 {
+            panic!("wrong number of terms");
+        }
+
+        aux_rpn.push_back(e.clone());
+        if e == "-" {
+            if num_term % 2 == 0 {
+                aux_rpn.push_back("+".to_string());
+            }
+        }
+    }
+
+    Ok(aux_rpn)
 }
 
-fn preced_assoc(op: &char) -> Result<(i8, Assoc), ParseError> {
+fn preced_assoc(op: &str) -> Result<(i8, Assoc), ParseError> {
     match op {
-        '+' => Ok((2, Assoc::Both)),
-        '-' => Ok((2, Assoc::Both)),
-        '^' => Ok((3, Assoc::Both)),
-        '&' => Ok((4, Assoc::Both)),
-        '|' => Ok((4, Assoc::Both)),
-        '.' => Ok((5, Assoc::Both)),
-        '~' => Ok((6, Assoc::Right)),
+        "+" => Ok((2, Assoc::Both)),
+        "-" => Ok((2, Assoc::Both)),
+        "~" => Ok((2, Assoc::Both)),
+        "^" => Ok((3, Assoc::Both)),
+        "&" => Ok((4, Assoc::Both)),
+        "|" => Ok((4, Assoc::Both)),
+        "." => Ok((5, Assoc::Both)),
         _ => Err(ParseError::NotOp()),
     }
 }

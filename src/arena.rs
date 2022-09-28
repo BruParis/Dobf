@@ -84,9 +84,9 @@ impl Arena {
         }
     }
 
-    fn get_op(&self, idx: usize) -> Result<char, ArenaError> {
+    fn get_op_sign(&self, idx: usize) -> Result<(char, String), ArenaError> {
         self.get(idx).and_then(|e| match e {
-            Elem::Node(n) => Ok(n.val.op),
+            Elem::Node(n) => Ok((n.val.op, n.val.sign.clone())),
             _ => Err(ArenaError::ElemIsLeaf()),
         })
     }
@@ -227,8 +227,18 @@ impl Arena {
         }
 
         match self.get_mut(idx_to)? {
-            Elem::Node(to) => to.ch.append(&mut from_ch),
+            Elem::Node(to) => {
+                to.ch.append(&mut from_ch.clone());
+            }
             _ => return Err(ArenaError::NotANode()),
+        }
+        // update children's new parent id
+        for ch_idx in from_ch {
+            match self.get_mut(ch_idx)? {
+                Elem::Node(n_ch) => n_ch.par = Some(idx_to),
+                Elem::Leaf(l_ch) => l_ch.par = Some(idx_to),
+                _ => return Err(ArenaError::ElemIsFree()),
+            }
         }
 
         self.remove_elem(idx_from)?;
@@ -250,26 +260,35 @@ impl DAGFactory {
             arena: &mut Arena,
             curr_node: &mut Option<usize>,
             node_stack: &mut VecDeque<usize>,
-            pop_stack: bool,
         ) {
+            // take curr not on node_stack
             if let Some(idx) = curr_node.take() {
+                node_stack.push_back(idx);
+            }
+
+            // clean node_stack -> node with enough children are merge/pushed onto parents
+            while let Some(idx) = node_stack.pop_back() {
                 let elem = arena.get_node(idx).expect("should have found node");
+
+                // ... it has at least 2children, it should be merge/push to top of node_stack
                 if let (true, Some(&mut par_idx)) = (elem.ch.len() > 1, node_stack.back_mut()) {
-                    let par_op = arena.get_op(par_idx).expect("should have found node");
-                    if par_op == elem.val.op {
+                    let (par_op, par_sign) =
+                        arena.get_op_sign(par_idx).expect("should have found node");
+                    // if same op,sign as top of stack -> merge children
+                    if par_op == elem.val.op && par_sign == elem.val.sign {
                         arena.move_ch(par_idx, idx).expect("ch not moved");
                     } else {
+                        // ... if not set as child
                         arena.push_ch(par_idx, idx).expect("ch not pushed");
                     }
-
-                    if pop_stack {
-                        *curr_node = node_stack.pop_back();
-                    }
                 } else {
+                    // ... else put back on top
                     node_stack.push_back(idx);
+                    break;
                 }
             }
         }
+
         println!("{}", format!("rpn: {:?}", rpn));
 
         if rpn.len() == 0 {
@@ -278,8 +297,8 @@ impl DAGFactory {
 
         let mut prev_leaf = false;
         let mut curr_node: Option<usize> = None;
-        let mut b_sign = true;
-        let mut pos = true;
+        let mut sign_stack: Vec<String> = Vec::new();
+        let mut sign = String::new();
         let mut node_stack: VecDeque<usize> = VecDeque::new();
 
         while let Some(elem) = rpn.pop_back() {
@@ -294,38 +313,33 @@ impl DAGFactory {
             );
 
             match elem.as_str() {
-                "+" | "-" | "." | "^" | "&" | "|" => {
+                "+" | "." | "^" | "&" | "|" => {
                     prev_leaf = false;
-                    if let Some(mut new_op) = elem.chars().next() {
-                        let this_pos = pos;
-                        let neg = new_op == '-';
-                        if neg {
-                            new_op = '+';
-                            pos = false;
-                        }
-
+                    if let Some(new_op) = elem.chars().next() {
                         if let Some(idx) = curr_node {
-                            let curr_op = arena.get_op(idx).expect("should have found op.");
-                            if curr_op == new_op {
+                            let (curr_op, _) =
+                                arena.get_op_sign(idx).expect("should have found op.");
+                            if curr_op == new_op && sign.len() == 0 {
                                 continue;
                             }
                         }
+                        if sign.len() > 0 {
+                            sign_stack.push(mem::take(&mut sign));
+                        }
 
-                        take_node_stack(arena, &mut curr_node, &mut node_stack, false);
+                        take_node_stack(arena, &mut curr_node, &mut node_stack);
 
-                        let expr = Expr::new(new_op, b_sign, this_pos);
+                        let expr = Expr::new(new_op, sign_stack.pop().unwrap_or("".to_string()));
                         curr_node = Some(arena.node(expr));
                     } else {
                         unreachable!()
                     }
-
-                    b_sign = true;
                 }
-                "~" => {
-                    if !b_sign {
+                "~" | "-" | "-~" | "~-" => {
+                    if sign.len() > 2 {
                         return Err(ExprError::RPNSyntaxError());
                     }
-                    b_sign = false;
+                    sign.push_str(&elem);
                 }
                 _ => {
                     let val: ExprVal;
@@ -337,8 +351,10 @@ impl DAGFactory {
                         return Err(ExprError::RPNSyntaxError());
                     }
 
-                    let term = Term { val, b_sign, pos };
-                    let id_l = arena.leaf(term);
+                    let id_l = arena.leaf(Term {
+                        val,
+                        sign: mem::take(&mut sign),
+                    });
 
                     match curr_node.as_mut() {
                         Some(idx) => arena
@@ -353,11 +369,11 @@ impl DAGFactory {
                     }
 
                     if prev_leaf {
-                        take_node_stack(arena, &mut curr_node, &mut node_stack, true);
+                        take_node_stack(arena, &mut curr_node, &mut node_stack);
+                        curr_node = node_stack.pop_back();
                     }
 
-                    pos = true;
-                    b_sign = true;
+                    sign = String::new();
                     prev_leaf = true;
                 }
             }
