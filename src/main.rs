@@ -4,6 +4,7 @@ use std::env;
 // use crate::parser::{parse_line, read_lines};
 
 use dobf::arena::{Arena, DAGFactory};
+use dobf::graph::Graph;
 //use dobf::factory::DAGFactory;
 
 use dobf::parser::{parse_rpn, read_lines};
@@ -38,6 +39,8 @@ fn main() {
                         let elem_idx =
                             DAGFactory::new_dag(&mut cl_line.clone(), &mut arena).unwrap();
                         println!("{}", arena.elem_str(elem_idx));
+                        println!("{}", arena.graph_str());
+                        Graph::write_graph(&arena);
                     }
                     Err(e) => println!("error cleaning {:?}", e),
                 }

@@ -15,6 +15,39 @@ pub enum Elem {
     Free,
 }
 
+impl Elem {
+    fn get_par_id(&self) -> Option<usize> {
+        match self {
+            Elem::Node(n) => n.par,
+            Elem::Leaf(l) => l.par,
+            _ => return panic!("idx -> free elem"),
+        }
+    }
+
+    fn get_idx_sign(&self) -> (usize, String) {
+        match self {
+            Elem::Node(n) => (n.idx, n.val.sign.clone()),
+            Elem::Leaf(l) => (l.idx, l.val.sign.clone()),
+            _ => return panic!("idx -> free elem"),
+        }
+    }
+
+    fn graph_label_str(&self) -> String {
+        match self {
+            Elem::Node(n) => n.graph_label_str(),
+            Elem::Leaf(l) => l.graph_label_str(),
+            _ => panic!("idx -> free elem"),
+        }
+    }
+    fn graph_edge_str(&self) -> Option<String> {
+        match self {
+            Elem::Node(n) => Some(n.graph_edge_str()),
+            Elem::Leaf(l) => None,
+            _ => panic!("idx -> free elem"),
+        }
+    }
+}
+
 pub struct Node {
     pub idx: usize,
     val: Expr,
@@ -31,12 +64,33 @@ impl Node {
             par: None,
         }
     }
+
+    fn graph_label_str(&self) -> String {
+        format!("{} [label=<{}{}>]\n", self.idx, self.val.sign, self.val.op)
+    }
+
+    fn graph_edge_str(&self) -> String {
+        self.ch
+            .iter()
+            .map(|c| format!("{} -> {}\n", self.idx, c))
+            .collect::<Vec<String>>()
+            .join("")
+    }
 }
 
 pub struct Leaf {
     pub idx: usize,
     val: Term,
     par: Option<usize>,
+}
+
+impl Leaf {
+    fn graph_label_str(&self) -> String {
+        format!(
+            "{} [label=<{}{:?}>]\n",
+            self.idx, self.val.sign, self.val.val
+        )
+    }
 }
 
 impl Arena {
@@ -117,6 +171,22 @@ impl Arena {
         res
     }
 
+    pub fn graph_str(&self) -> String {
+        let graph_label_str = self
+            .elems
+            .iter()
+            .map(Elem::graph_label_str)
+            .collect::<Vec<String>>()
+            .join("");
+        let graph_edge_str = self
+            .elems
+            .iter()
+            .flat_map(Elem::graph_edge_str)
+            .collect::<Vec<String>>()
+            .join("");
+        "digraph {\n".to_string() + &graph_label_str + &graph_edge_str + "}"
+    }
+
     pub fn elem_str(&self, idx: usize) -> String {
         let mut str_stack: VecDeque<String> = VecDeque::new();
         let mut suff_stack: Vec<String> = Vec::new();
@@ -130,15 +200,11 @@ impl Arena {
             let e = self.get(idx).expect("should have found elem");
 
             // Not elegant
-            let mut p_id_opt = None;
-            match e {
-                Elem::Node(n) => p_id_opt = n.par,
-                Elem::Leaf(l) => p_id_opt = l.par,
-                _ => return panic!("idx -> free elem"),
-            }
-
-            if let Some(p_id) = p_id_opt {
+            if let Some(p_id) = e.get_par_id() {
                 while let Some(&aux_id) = par_idx.last() {
+                    // if current elem's parent id is different current parent,
+                    // then parsing of all current parent children is done
+                    // -> push parent suffix, change current parent
                     if p_id != aux_id {
                         res.push_str(&suff_stack.pop().expect("should have found suffix"));
                         par_idx.pop();
