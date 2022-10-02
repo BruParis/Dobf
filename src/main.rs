@@ -3,7 +3,7 @@ use std::env;
 // use crate::error::ParseError;
 // use crate::parser::{parse_line, read_lines};
 
-use dobf::arena::{Arena, DAGFactory};
+use dobf::arena::{Arena, ArenaFactory};
 use dobf::graph::Graph;
 //use dobf::factory::DAGFactory;
 
@@ -34,13 +34,13 @@ fn main() {
                 }*/
                 match parse_rpn(line) {
                     Ok(cl_line) => {
-                        let mut arena = Arena::new();
                         println!("cleaned line: {:?}", cl_line);
-                        let elem_idx =
-                            DAGFactory::new_dag(&mut cl_line.clone(), &mut arena).unwrap();
-                        println!("{}", arena.elem_str(elem_idx));
+                        let arena = ArenaFactory::new_arena(&mut cl_line.clone()).unwrap();
+                        println!("{}", arena.print());
                         println!("{}", arena.graph_str());
                         Graph::write_graph(&arena);
+                        println!("bitwise: {}", arena.is_bitwise(arena.root_node).unwrap());
+                        println!("mba: {}", arena.is_mba(arena.root_node).unwrap());
                     }
                     Err(e) => println!("error cleaning {:?}", e),
                 }

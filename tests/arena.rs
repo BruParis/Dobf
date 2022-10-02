@@ -1,11 +1,10 @@
-use dobf::arena::{Arena, DAGFactory, Elem};
+use dobf::arena::{Arena, ArenaFactory, Elem};
 use dobf::error::ExprError;
 use dobf::parser::parse_rpn;
 
 fn get_expr_str(expr: String) -> Result<String, ExprError> {
-    let mut arena = Arena::new();
-    let elem_idx = DAGFactory::new_dag(&mut parse_rpn(expr).unwrap(), &mut arena)?;
-    Ok(format!("{}", arena.elem_str(elem_idx)))
+    let arena = ArenaFactory::new_arena(&mut parse_rpn(expr).unwrap())?;
+    Ok(format!("{}", arena.print()))
 }
 
 #[test]

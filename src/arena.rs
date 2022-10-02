@@ -5,6 +5,7 @@ use crate::error::{ArenaError, ExprError};
 use crate::expr::{Expr, ExprVal, Term};
 
 pub struct Arena {
+    pub root_node: usize,
     elems: Vec<Elem>,
     free_slots: Vec<usize>,
 }
@@ -91,11 +92,26 @@ impl Leaf {
             self.idx, self.val.sign, self.val.val
         )
     }
+
+    fn is_bitwise(&self) -> bool {
+        match self.val.val {
+            ExprVal::U32(_) => false,
+            ExprVal::Var(_) => true,
+        }
+    }
+
+    fn is_cst(&self) -> bool {
+        match self.val.val {
+            ExprVal::U32(_) => true,
+            ExprVal::Var(_) => false,
+        }
+    }
 }
 
 impl Arena {
     pub fn new() -> Self {
         Arena {
+            root_node: 0,
             elems: Vec::new(),
             free_slots: Vec::new(),
         }
@@ -185,6 +201,10 @@ impl Arena {
             .collect::<Vec<String>>()
             .join("");
         "digraph {\n".to_string() + &graph_label_str + &graph_edge_str + "}"
+    }
+
+    pub fn print(&self) -> String {
+        self.elem_str(self.root_node)
     }
 
     pub fn elem_str(&self, idx: usize) -> String {
@@ -311,14 +331,104 @@ impl Arena {
 
         Ok(())
     }
+
+    fn bitwise_func(&self, idx: usize, stack_id: &mut Vec<usize>) -> Result<bool, ArenaError> {
+        match self.get(idx)? {
+            Elem::Node(n) => {
+                if "+.".contains(n.val.op) {
+                    return Ok(false);
+                }
+
+                stack_id.append(&mut n.ch.clone());
+            }
+            Elem::Leaf(l) => {
+                if !l.is_bitwise() {
+                    return Ok(false);
+                }
+            }
+            _ => return Err(ArenaError::ElemIsFree()),
+        };
+
+        Ok(true)
+    }
+
+    pub fn is_bitwise(&self, idx: usize) -> Result<bool, ArenaError> {
+        let mut stack_id: Vec<usize> = vec![idx];
+        while let Some(curr_idx) = stack_id.pop() {
+            if !self.bitwise_func(curr_idx, &mut stack_id)? {
+                return Ok(false);
+            }
+        }
+
+        Ok(true)
+    }
+
+    // mba form: + a.e, where a is an int, e is a bitwise expression
+    // a.e is referred to as mba_term
+    pub fn is_mba(&self, idx: usize) -> Result<bool, ArenaError> {
+        let mut stack_mba_term: Vec<usize> = Vec::new();
+        let mut stack_bitwise: Vec<usize> = Vec::new();
+        match self.get(idx)? {
+            Elem::Node(n) => {
+                match n.val.op {
+                    '+' => stack_mba_term.append(&mut n.ch.clone()),
+                    '.' => stack_mba_term.push(idx),
+                    _ => stack_bitwise.append(&mut n.ch.clone()),
+                };
+            }
+            Elem::Leaf(_) => return Ok(true),
+            _ => return Err(ArenaError::ElemIsFree()),
+        };
+
+        while let Some(curr_idx) = stack_mba_term.pop() {
+            match self.get(curr_idx)? {
+                Elem::Node(n) => match n.val.op {
+                    '+' => return Ok(false),
+                    '.' => {
+                        let mut node_count = 0;
+                        for ch_idx in &n.ch {
+                            let mut is_node = true;
+                            match self.get(*ch_idx)? {
+                                Elem::Node(_) => stack_bitwise.push(*ch_idx),
+                                Elem::Leaf(l) => {
+                                    if l.is_cst() {
+                                        is_node = false;
+                                    }
+                                }
+                                _ => return Err(ArenaError::ElemIsFree()),
+                            };
+                            if is_node {
+                                node_count += 1;
+                            }
+                            if node_count > 1 {
+                                return Ok(false);
+                            }
+                        }
+                    }
+                    _ => stack_bitwise.push(curr_idx),
+                },
+                Elem::Leaf(_) => (),
+                _ => return Err(ArenaError::ElemIsFree()),
+            };
+        }
+
+        while let Some(curr_idx) = stack_bitwise.pop() {
+            if !self.bitwise_func(curr_idx, &mut stack_bitwise)? {
+                return Ok(false);
+            }
+        }
+
+        Ok(true)
+    }
 }
 
-pub struct DAGFactory;
-impl DAGFactory {
-    pub fn new_dag(rpn: &mut VecDeque<String>, arena: &mut Arena) -> Result<usize, ExprError> {
-        let expr_id = DAGFactory::build_expr(rpn, arena)?;
+pub struct ArenaFactory;
+impl ArenaFactory {
+    pub fn new_arena(rpn: &mut VecDeque<String>) -> Result<Arena, ExprError> {
+        let mut arena = Arena::new();
+        arena.root_node = ArenaFactory::build_expr(rpn, &mut arena)?;
 
-        Ok(expr_id)
+        Ok(arena)
     }
 
     fn build_expr(rpn: &mut VecDeque<String>, arena: &mut Arena) -> Result<usize, ExprError> {
