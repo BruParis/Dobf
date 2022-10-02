@@ -37,6 +37,16 @@ fn test_missing_par_simple() -> Result<(), ParseError> {
 }
 
 #[test]
+fn test_missing_op() -> Result<(), ParseError> {
+    let miss_cl = "x^y(t.y)".to_string();
+    let res = parse_rpn(miss_cl).unwrap_err();
+    let expected = ParseError::WrongSeqChar("wrong seq of char: y/(".to_string());
+    assert_eq!(res, expected);
+
+    Ok(())
+}
+
+#[test]
 fn test_succ_op() -> Result<(), ParseError> {
     let miss_cl = "+ ^".to_string();
     let res = parse_rpn(miss_cl).unwrap_err();

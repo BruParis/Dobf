@@ -123,7 +123,7 @@ pub fn parse_rpn(mut line: String) -> Result<VecDeque<String>, ParseError> {
             }
             _ => {
                 if w[0].is_alphabetic() {
-                    if w[1].is_alphabetic() {
+                    if w[1].is_alphabetic() || "(".contains(w[1]) {
                         return Err(ParseError::WrongSeqChar(format!(
                             "wrong seq of char: {}/{}",
                             w[0], w[1]
