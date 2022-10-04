@@ -16,36 +16,69 @@ pub enum Elem {
     Free,
 }
 
+fn fn_elem<F, R>(elem: &Elem, func: F) -> R
+where
+    F: Fn(&Elem) -> R,
+{
+    match elem {
+        Elem::Free => panic!("idx -> free elem"),
+        e => func(e),
+    }
+}
+
+fn fn_node<F, R>(elem: &Elem, func: F) -> R
+where
+    F: FnOnce(&Node) -> R,
+{
+    match elem {
+        Elem::Node(n) => func(n),
+        Elem::Leaf(_) => panic!("idx -> leaf elem"),
+        Elem::Free => panic!("idx -> free elem"),
+    }
+}
+
+fn match_elem<FNo, Fl, R>(elem: &Elem, func_n: FNo, func_l: Fl) -> R
+where
+    FNo: FnOnce(&Node) -> R,
+    Fl: FnOnce(&Leaf) -> R,
+{
+    match elem {
+        Elem::Node(n) => func_n(n),
+        Elem::Leaf(l) => func_l(l),
+        _ => panic!("idx -> free elem"),
+    }
+}
+
+fn match_elem_mut<FNo, Fl, R>(elem: &mut Elem, func_n: &mut FNo, func_l: &mut Fl) -> R
+where
+    FNo: FnMut(&mut Node) -> R,
+    Fl: FnMut(&mut Leaf) -> R,
+{
+    match elem {
+        Elem::Node(n) => func_n(n),
+        Elem::Leaf(l) => func_l(l),
+        _ => panic!("idx -> free elem"),
+    }
+}
+
 impl Elem {
     fn get_par_id(&self) -> Option<usize> {
-        match self {
-            Elem::Node(n) => n.par,
-            Elem::Leaf(l) => l.par,
-            _ => return panic!("idx -> free elem"),
-        }
+        match_elem(self, |n| n.par, |l| l.par)
     }
 
     fn get_idx_sign(&self) -> (usize, String) {
-        match self {
-            Elem::Node(n) => (n.idx, n.val.sign.clone()),
-            Elem::Leaf(l) => (l.idx, l.val.sign.clone()),
-            _ => return panic!("idx -> free elem"),
-        }
+        match_elem(
+            self,
+            |n| (n.idx, n.val.sign.clone()),
+            |l| (l.idx, l.val.sign.clone()),
+        )
     }
 
     fn graph_label_str(&self) -> String {
-        match self {
-            Elem::Node(n) => n.graph_label_str(),
-            Elem::Leaf(l) => l.graph_label_str(),
-            _ => panic!("idx -> free elem"),
-        }
+        match_elem(self, |n| n.graph_label_str(), |l| l.graph_label_str())
     }
     fn graph_edge_str(&self) -> Option<String> {
-        match self {
-            Elem::Node(n) => Some(n.graph_edge_str()),
-            Elem::Leaf(l) => None,
-            _ => panic!("idx -> free elem"),
-        }
+        match_elem(self, |n| Some(n.graph_edge_str()), |_| None)
     }
 }
 
@@ -141,12 +174,12 @@ impl Arena {
         self.elems.len()
     }
 
-    fn get(&self, idx: usize) -> Result<&Elem, ArenaError> {
-        self.elems.get(idx).ok_or(ArenaError::NotFound())
+    fn get(&self, idx: usize) -> &Elem {
+        self.elems.get(idx).expect("elem not found at index!")
     }
 
     fn get_node(&self, idx: usize) -> Result<&Node, ArenaError> {
-        let e = self.elems.get(idx).ok_or(ArenaError::NotFound())?;
+        let e = self.elems.get(idx).expect("elem not found at index!");
 
         match e {
             Elem::Node(n) => Ok(n),
@@ -155,18 +188,18 @@ impl Arena {
     }
 
     fn get_op_sign(&self, idx: usize) -> Result<(char, String), ArenaError> {
-        self.get(idx).and_then(|e| match e {
+        match self.get(idx) {
             Elem::Node(n) => Ok((n.val.op, n.val.sign.clone())),
             _ => Err(ArenaError::ElemIsLeaf()),
-        })
+        }
     }
 
-    fn get_mut(&mut self, idx: usize) -> Result<&mut Elem, ArenaError> {
-        self.elems.get_mut(idx).ok_or(ArenaError::NotFound())
+    fn get_mut(&mut self, idx: usize) -> &mut Elem {
+        self.elems.get_mut(idx).expect("elem not found at index!")
     }
 
     fn remove_elem(&mut self, idx: usize) -> Result<Elem, ArenaError> {
-        let rem_elem = mem::replace(self.get_mut(idx)?, Elem::Free);
+        let rem_elem = mem::replace(self.get_mut(idx), Elem::Free);
         self.free_slots.push(idx);
         Ok(rem_elem)
     }
@@ -176,12 +209,8 @@ impl Arena {
         let mut res: Vec<usize> = Vec::new();
         while let Some(idx) = idx_stack.pop() {
             res.push(idx);
-            let e = self.get(idx).expect("should have found elem");
-            match e {
-                Elem::Node(n) => idx_stack.append(&mut n.ch.clone()),
-                Elem::Free => return panic!("idx -> free elem"),
-                _ => (),
-            }
+            let e = self.get(idx);
+            match_elem(e, |n| idx_stack.append(&mut n.ch.clone()), |_| ())
         }
 
         res
@@ -217,7 +246,7 @@ impl Arena {
         pre_order.reverse();
 
         while let Some(idx) = pre_order.pop() {
-            let e = self.get(idx).expect("should have found elem");
+            let e = self.get(idx);
 
             // Not elegant
             if let Some(p_id) = e.get_par_id() {
@@ -234,20 +263,15 @@ impl Arena {
                 }
             }
 
-            match e {
-                Elem::Node(n) => {
-                    let mut pre_str = String::new();
-                    let mut suff_str = String::new();
-                    n.val.pref_suff(&mut pre_str, &mut suff_str);
-                    res.push_str(&pre_str);
-                    suff_stack.push(suff_str);
-
-                    par_idx.push(idx);
-                }
-                Elem::Leaf(l) => {
-                    res.push_str(&format!("{:?}", l.val));
-                }
-                _ => return panic!("idx -> free elem"),
+            match_elem(e, |_| par_idx.push(idx), |_| ());
+            let (p_str, s_str) = match_elem(
+                e,
+                |n| n.val.pref_suff(),
+                |l| (format!("{:?}", l.val), "".to_string()),
+            );
+            res.push_str(&p_str);
+            if s_str.len() > 0 {
+                suff_stack.push(s_str);
             }
         }
 
@@ -260,59 +284,55 @@ impl Arena {
         res
     }
 
-    fn set_par(&mut self, idx: usize, par_id: usize) -> Result<(), ArenaError> {
-        match self.get_mut(idx)? {
-            Elem::Node(n) => n.par = Some(par_id),
-            Elem::Leaf(l) => l.par = Some(par_id),
-            _ => return Err(ArenaError::ElemIsFree()),
-        }
-
-        Ok(())
+    fn set_par(&mut self, idx: usize, par_id: usize) {
+        match_elem_mut(
+            self.get_mut(idx),
+            &mut |n: &mut Node| n.par = Some(par_id),
+            &mut |l: &mut Leaf| l.par = Some(par_id),
+        )
     }
 
     fn push_ch(&mut self, idx: usize, idx_ch: usize) -> Result<(), ArenaError> {
-        self.get(idx_ch)?;
         let mut par_idx_opt = None;
-        match self.get_mut(idx)? {
-            Elem::Node(n) => {
+        match_elem_mut(
+            self.get_mut(idx),
+            &mut |n| {
                 par_idx_opt = Some(n.idx);
                 n.ch.push(idx_ch);
-            }
-            Elem::Leaf(_) => return Err(ArenaError::ParentIsLeaf()),
-            _ => return Err(ArenaError::ElemIsFree()),
-        }
-        self.set_par(idx_ch, par_idx_opt.expect("should have found parent id"))?;
+                Ok(())
+            },
+            &mut |_| Err(ArenaError::ParentIsLeaf()),
+        )?;
+        self.set_par(idx_ch, par_idx_opt.expect("should have found parent id"));
         Ok(())
     }
 
     fn push_ch_vec(&mut self, idx: usize, idx_ch_vec: &mut Vec<usize>) -> Result<(), ArenaError> {
-        idx_ch_vec
-            .iter()
-            .try_for_each(|idx| self.get(*idx).and_then(|_| Ok(())));
         let mut par_idx_opt = None;
-        match self.get_mut(idx)? {
-            Elem::Node(n) => {
+        match_elem_mut(
+            self.get_mut(idx),
+            &mut |n| {
                 par_idx_opt = Some(n.idx);
                 n.ch.append(idx_ch_vec);
-            }
-            Elem::Leaf(_) => return Err(ArenaError::ParentIsLeaf()),
-            _ => return Err(ArenaError::ElemIsFree()),
-        }
+                Ok(())
+            },
+            &mut |_| Err(ArenaError::ParentIsLeaf()),
+        )?;
 
         for idx_ch in idx_ch_vec {
-            self.set_par(*idx_ch, par_idx_opt.expect("should have found parent id"))?;
+            self.set_par(*idx_ch, par_idx_opt.expect("should have found parent id"));
         }
         Ok(())
     }
 
     fn move_ch(&mut self, idx_to: usize, idx_from: usize) -> Result<(), ArenaError> {
-        let mut from_ch: Vec<usize>;
-        match self.get(idx_from)? {
+        let from_ch: Vec<usize>;
+        match self.get(idx_from) {
             Elem::Node(from) => from_ch = from.ch.clone(),
             _ => return Err(ArenaError::NotANode()),
         }
 
-        match self.get_mut(idx_to)? {
+        match self.get_mut(idx_to) {
             Elem::Node(to) => {
                 to.ch.append(&mut from_ch.clone());
             }
@@ -320,11 +340,11 @@ impl Arena {
         }
         // update children's new parent id
         for ch_idx in from_ch {
-            match self.get_mut(ch_idx)? {
-                Elem::Node(n_ch) => n_ch.par = Some(idx_to),
-                Elem::Leaf(l_ch) => l_ch.par = Some(idx_to),
-                _ => return Err(ArenaError::ElemIsFree()),
-            }
+            match_elem_mut(
+                self.get_mut(ch_idx),
+                &mut |n| n.par = Some(idx_to),
+                &mut |l| l.par = Some(idx_to),
+            );
         }
 
         self.remove_elem(idx_from)?;
@@ -332,93 +352,99 @@ impl Arena {
         Ok(())
     }
 
-    fn bitwise_func(&self, idx: usize, stack_id: &mut Vec<usize>) -> Result<bool, ArenaError> {
-        match self.get(idx)? {
-            Elem::Node(n) => {
-                if "+.".contains(n.val.op) {
-                    return Ok(false);
-                }
-
+    fn bitwise_func(&self, idx: usize, stack_id: &mut Vec<usize>) -> bool {
+        match_elem(
+            self.get(idx),
+            |n| {
                 stack_id.append(&mut n.ch.clone());
-            }
-            Elem::Leaf(l) => {
-                if !l.is_bitwise() {
-                    return Ok(false);
-                }
-            }
-            _ => return Err(ArenaError::ElemIsFree()),
-        };
-
-        Ok(true)
+                !"+.".contains(n.val.op)
+            },
+            |l| l.is_bitwise(),
+        )
     }
 
-    pub fn is_bitwise(&self, idx: usize) -> Result<bool, ArenaError> {
+    fn is_leaf(&self, idx: usize) -> bool {
+        match_elem(self.get(idx), |_| false, |_| true)
+    }
+
+    fn is_cst(&self, idx: usize) -> bool {
+        match_elem(self.get(idx), |_| false, |l| l.is_cst())
+    }
+
+    pub fn is_bitwise(&self, idx: usize) -> bool {
         let mut stack_id: Vec<usize> = vec![idx];
         while let Some(curr_idx) = stack_id.pop() {
-            if !self.bitwise_func(curr_idx, &mut stack_id)? {
-                return Ok(false);
+            if !self.bitwise_func(curr_idx, &mut stack_id) {
+                return false;
             }
         }
 
-        Ok(true)
+        true
     }
 
-    // mba form: + a.e, where a is an int, e is a bitwise expression
+    // mba form: + a1.e1;a2.e2;...., where ai is an int, ei is a bitwise expression
     // a.e is referred to as mba_term
-    pub fn is_mba(&self, idx: usize) -> Result<bool, ArenaError> {
-        let mut stack_mba_term: Vec<usize> = Vec::new();
-        let mut stack_bitwise: Vec<usize> = Vec::new();
-        match self.get(idx)? {
-            Elem::Node(n) => {
+    pub fn is_mba(&self, idx: usize) -> bool {
+        let mut mba_term_vec: Vec<usize> = Vec::new();
+        let mut bitwise_vec: Vec<usize> = Vec::new();
+
+        if self.is_leaf(idx) {
+            return true;
+        }
+
+        match_elem(
+            self.get(idx),
+            |n| {
                 match n.val.op {
-                    '+' => stack_mba_term.append(&mut n.ch.clone()),
-                    '.' => stack_mba_term.push(idx),
-                    _ => stack_bitwise.append(&mut n.ch.clone()),
+                    '+' => mba_term_vec.append(&mut n.ch.clone()),
+                    '.' => mba_term_vec.push(idx),
+                    _ => bitwise_vec.append(&mut n.ch.clone()),
                 };
-            }
-            Elem::Leaf(_) => return Ok(true),
-            _ => return Err(ArenaError::ElemIsFree()),
-        };
+            },
+            |_| (),
+        );
 
-        while let Some(curr_idx) = stack_mba_term.pop() {
-            match self.get(curr_idx)? {
-                Elem::Node(n) => match n.val.op {
-                    '+' => return Ok(false),
-                    '.' => {
-                        let mut node_count = 0;
-                        for ch_idx in &n.ch {
-                            let mut is_node = true;
-                            match self.get(*ch_idx)? {
-                                Elem::Node(_) => stack_bitwise.push(*ch_idx),
-                                Elem::Leaf(l) => {
-                                    if l.is_cst() {
-                                        is_node = false;
-                                    }
-                                }
-                                _ => return Err(ArenaError::ElemIsFree()),
-                            };
-                            if is_node {
-                                node_count += 1;
-                            }
-                            if node_count > 1 {
-                                return Ok(false);
-                            }
+        // elem in stack_mba_term all have same '+' parent
+        while let Some(curr_idx) = mba_term_vec.pop() {
+            // if add operator -> not mba_term, parent not an mba
+            if match_elem(self.get(curr_idx), |n| n.val.op == '+', |_| false) {
+                return false;
+            }
+
+            // if leaf...
+            if self.is_leaf(curr_idx) {
+                continue;
+            }
+
+            // ...else: node with bitwise op, or '.' op
+            // if '.' op, collect all children for bitwise check + check at most 1 node
+            if !fn_node(self.get(curr_idx), |n| match n.val.op {
+                '.' => {
+                    let mut num_var_expr = 0;
+                    n.ch.iter().all(|ch_idx| {
+                        match_elem(self.get(*ch_idx), |_| bitwise_vec.push(*ch_idx), |_| ());
+                        if !self.is_cst(*ch_idx) {
+                            num_var_expr += 1;
                         }
-                    }
-                    _ => stack_bitwise.push(curr_idx),
-                },
-                Elem::Leaf(_) => (),
-                _ => return Err(ArenaError::ElemIsFree()),
-            };
-        }
-
-        while let Some(curr_idx) = stack_bitwise.pop() {
-            if !self.bitwise_func(curr_idx, &mut stack_bitwise)? {
-                return Ok(false);
+                        num_var_expr < 2
+                    })
+                }
+                _ => {
+                    bitwise_vec.push(curr_idx);
+                    true
+                }
+            }) {
+                return false;
             }
         }
 
-        Ok(true)
+        while let Some(curr_idx) = bitwise_vec.pop() {
+            if !self.bitwise_func(curr_idx, &mut bitwise_vec) {
+                return false;
+            }
+        }
+
+        true
     }
 }
 

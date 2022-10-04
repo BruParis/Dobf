@@ -39,8 +39,8 @@ fn main() {
                         println!("{}", arena.print());
                         println!("{}", arena.graph_str());
                         Graph::write_graph(&arena);
-                        println!("bitwise: {}", arena.is_bitwise(arena.root_node).unwrap());
-                        println!("mba: {}", arena.is_mba(arena.root_node).unwrap());
+                        println!("bitwise: {}", arena.is_bitwise(arena.root_node));
+                        println!("mba: {}", arena.is_mba(arena.root_node));
                     }
                     Err(e) => println!("error cleaning {:?}", e),
                 }

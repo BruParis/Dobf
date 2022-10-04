@@ -26,12 +26,10 @@ pub enum ExprError {
 
 #[derive(Debug, PartialEq)]
 pub enum ArenaError {
-    NotFound(),
     NotANode(),
     ParentIsLeaf(),
     ElemIsLeaf(),
     ElemIsNode(),
-    ElemIsFree(),
 }
 
 //pub type Result<T> = std::result::Result<T, ParseError>;

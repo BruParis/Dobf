@@ -16,19 +16,22 @@ impl Expr {
         }
     }
 
-    pub fn pref_suff(&self, p_str: &mut String, s_str: &mut String) {
+    pub fn pref_suff(&self) -> (String, String) {
+        let (mut p_str, mut s_str) = (String::new(), String::new());
         let closed_par = self.sign.len() > 0;
         if self.sign.len() > 0 {
-            *p_str = format!("{}({}{}", &self.sign, &self.op, p_str);
+            p_str = format!("{}({}{}", &self.sign, &self.op, p_str);
         //*p_str = &self.sign + "(" + &self.op.to_string() + p_str;
         } else {
-            *p_str = self.op.to_string() + p_str;
+            p_str = format!("{}{}", self.op.to_string(), p_str);
         }
 
         if closed_par {
             s_str.push(')');
         }
         s_str.push('/');
+
+        (p_str, s_str)
     }
 }
 
@@ -42,16 +45,20 @@ pub struct Term {
     pub sign: String,
 }
 
+// useless
+impl Term {
+    pub fn is_cst(&self) -> bool {
+        match self.val {
+            ExprVal::U32(_) => true,
+            ExprVal::Var(_) => false,
+        }
+    }
+}
+
 impl Debug for Term {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let res = format!("{}{:?}", self.sign, self.val);
         write!(f, "{}", res)
-        /*match (self.pos, self.b_sign) {
-            (false, false) => write!(f, "-~{:?}", self.val),
-            (false, true) => write!(f, "-{:?}", self.val),
-            (true, false) => write!(f, "~{:?}", self.val),
-            _ => write!(f, "{:?}", self.val),
-        }*/
     }
 }
 
