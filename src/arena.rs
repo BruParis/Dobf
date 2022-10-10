@@ -1,4 +1,4 @@
-use std::collections::VecDeque;
+use std::collections::{BTreeSet, VecDeque};
 use std::mem;
 
 use crate::error::{ArenaError, ExprError};
@@ -26,7 +26,7 @@ where
     }
 }
 
-fn fn_node<F, R>(elem: &Elem, func: F) -> R
+pub fn fn_node<F, R>(elem: &Elem, func: F) -> R
 where
     F: FnOnce(&Node) -> R,
 {
@@ -37,7 +37,7 @@ where
     }
 }
 
-fn match_elem<FNo, Fl, R>(elem: &Elem, func_n: FNo, func_l: Fl) -> R
+pub fn match_elem<FNo, Fl, R>(elem: &Elem, func_n: FNo, func_l: Fl) -> R
 where
     FNo: FnOnce(&Node) -> R,
     Fl: FnOnce(&Leaf) -> R,
@@ -84,8 +84,8 @@ impl Elem {
 
 pub struct Node {
     pub idx: usize,
-    val: Expr,
-    ch: Vec<usize>,
+    pub val: Expr,
+    pub ch: Vec<usize>,
     par: Option<usize>,
 }
 
@@ -114,7 +114,7 @@ impl Node {
 
 pub struct Leaf {
     pub idx: usize,
-    val: Term,
+    pub val: Term,
     par: Option<usize>,
 }
 
@@ -174,16 +174,25 @@ impl Arena {
         self.elems.len()
     }
 
-    fn get(&self, idx: usize) -> &Elem {
+    pub fn get(&self, idx: usize) -> &Elem {
         self.elems.get(idx).expect("elem not found at index!")
     }
 
-    fn get_node(&self, idx: usize) -> Result<&Node, ArenaError> {
-        let e = self.elems.get(idx).expect("elem not found at index!");
+    pub fn get_node(&self, idx: usize) -> Result<&Node, ArenaError> {
+        let e = self.get(idx);
 
         match e {
             Elem::Node(n) => Ok(n),
             _ => Err(ArenaError::NotANode()),
+        }
+    }
+
+    pub fn get_ch(&self, idx: usize) -> Vec<usize> {
+        let e = self.get(idx);
+
+        match e {
+            Elem::Node(n) => n.ch.clone(),
+            _ => vec![],
         }
     }
 
@@ -204,10 +213,14 @@ impl Arena {
         Ok(rem_elem)
     }
 
-    fn get_preorder(&self, idx: usize) -> Vec<usize> {
+    pub fn get_preorder(&self, idx: usize, only_node: bool) -> Vec<usize> {
         let mut idx_stack = vec![idx];
         let mut res: Vec<usize> = Vec::new();
         while let Some(idx) = idx_stack.pop() {
+            if only_node & self.is_leaf(idx) {
+                continue;
+            }
+
             res.push(idx);
             let e = self.get(idx);
             match_elem(e, |n| idx_stack.append(&mut n.ch.clone()), |_| ())
@@ -242,7 +255,7 @@ impl Arena {
         let mut par_idx: Vec<usize> = Vec::new();
         let mut res = String::new();
 
-        let mut pre_order = self.get_preorder(idx);
+        let mut pre_order = self.get_preorder(idx, false);
         pre_order.reverse();
 
         while let Some(idx) = pre_order.pop() {
@@ -384,25 +397,25 @@ impl Arena {
 
     // mba form: + a1.e1;a2.e2;...., where ai is an int, ei is a bitwise expression
     // a.e is referred to as mba_term
-    pub fn is_mba(&self, idx: usize) -> bool {
+    // leaf are trivial case of mban -> rejected
+    // therefore, if true, an mba necessarily has children -> update children
+    pub fn is_mba<'a>(&'a self, idx: usize) -> bool {
         let mut mba_term_vec: Vec<usize> = Vec::new();
         let mut bitwise_vec: Vec<usize> = Vec::new();
 
         if self.is_leaf(idx) {
-            return true;
+            return false;
         }
 
-        match_elem(
-            self.get(idx),
-            |n| {
-                match n.val.op {
-                    '+' => mba_term_vec.append(&mut n.ch.clone()),
-                    '.' => mba_term_vec.push(idx),
-                    _ => bitwise_vec.append(&mut n.ch.clone()),
-                };
-            },
-            |_| (),
-        );
+        if !fn_node(self.get(idx), |n| match n.val.op {
+            '+' => {
+                mba_term_vec.append(&mut n.ch.clone());
+                true
+            }
+            _ => false,
+        }) {
+            return false;
+        }
 
         // elem in stack_mba_term all have same '+' parent
         while let Some(curr_idx) = mba_term_vec.pop() {

@@ -57,6 +57,12 @@ fn test_mba() -> Result<(), ArenaError> {
     let expr = "x+(z^4)".to_string();
     assert_eq!(is_mba(expr), false);
 
+    let expr = "x^y".to_string();
+    assert_eq!(is_mba(expr), false);
+
+    let expr = "3.(x^y)".to_string();
+    assert_eq!(is_mba(expr), false);
+
     let expr = "x+4.(z^3.x)".to_string();
     assert_eq!(is_mba(expr), false);
 
@@ -66,16 +72,19 @@ fn test_mba() -> Result<(), ArenaError> {
     let expr = "x+y+4.z.a".to_string();
     assert_eq!(is_mba(expr), false);
 
+    let expr = "x+y+4.(z^x).(a^b)".to_string();
+    assert_eq!(is_mba(expr), false);
+
     let expr = "x".to_string();
-    assert_eq!(is_mba(expr), true);
+    assert_eq!(is_mba(expr), false);
 
     let expr = "x+y".to_string();
     assert_eq!(is_mba(expr), true);
 
-    let expr = "x^y".to_string();
+    let expr = "x+x^y".to_string();
     assert_eq!(is_mba(expr), true);
 
-    let expr = "x^(y|t)".to_string();
+    let expr = "a+x^(y|t)".to_string();
     assert_eq!(is_mba(expr), true);
 
     let expr = "x+13".to_string();
