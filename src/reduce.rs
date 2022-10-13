@@ -1,5 +1,4 @@
 use crate::arena::{fn_node, match_elem, Arena};
-use crate::expr::Term;
 
 fn reduce(arena: &mut Arena, root_idx: usize) {
     let mut node_idx_vec = arena.get_preorder(root_idx, false);
@@ -13,7 +12,7 @@ fn reduce(arena: &mut Arena, root_idx: usize) {
         let p_str = arena.elem_str(idx);
         print!("mba: {}", p_str);
 
-        for ch in ch_vec {
+        /*for ch in ch_vec {
             fn_node(arena.get(idx), |n| match n.val.op {
                 '.' => {
                     let mut cst_t: Option<Term> = None;
@@ -31,6 +30,6 @@ fn reduce(arena: &mut Arena, root_idx: usize) {
                 }
                 _ => true,
             });
-        }
+        }*/
     }
 }
