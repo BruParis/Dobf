@@ -1,5 +1,5 @@
-use dobf::arena::{Arena, ArenaFactory, Elem};
 use dobf::error::ExprError;
+use dobf::expr::factory::ArenaFactory;
 use dobf::parser::parse_rpn;
 
 fn get_expr_str(expr: String) -> Result<String, ExprError> {

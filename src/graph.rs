@@ -1,6 +1,6 @@
 use std::fs;
 
-use crate::arena::Arena;
+use crate::expr::arena::Arena;
 
 pub struct Graph;
 impl Graph {

@@ -1,4 +1,5 @@
-use crate::arena::{fn_node, match_elem, Arena};
+use crate::expr::arena::Arena;
+use crate::expr::utils::{fn_node, match_elem};
 
 fn reduce(arena: &mut Arena, root_idx: usize) {
     let mut node_idx_vec = arena.get_preorder(root_idx, false);
