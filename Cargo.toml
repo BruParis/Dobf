@@ -8,4 +8,5 @@ edition = "2018"
 
 [dependencies]
 itertools = "0.10.2"
+intbits = "0.2.0"
 

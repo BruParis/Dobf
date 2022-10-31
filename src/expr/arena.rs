@@ -1,9 +1,11 @@
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::mem;
 
-use super::expr::Expr;
+use super::expr::{Bitwise, Expr};
 use super::node::{Leaf, Node, VarTerm};
-use super::utils::{compute_op, compute_sign, match_elem, match_elem_mut, node_is_bitwise};
+use super::utils::{
+    compute_op, compute_sign, fn_node, match_elem, match_elem_mut, node_is_bitwise,
+};
 
 use crate::error::ArenaError;
 
@@ -337,5 +339,48 @@ impl Arena {
 
     pub fn is_mba(&self, idx: usize) -> bool {
         match_elem(self.get(idx), |n| matches!(n.expr, Expr::MBA(_)), |_| false)
+    }
+
+    pub fn gather_vars(&self, idx: usize) -> BTreeSet<char> {
+        let mut res = BTreeSet::new();
+        let mut idx_vec = vec![idx];
+
+        while let Some(aux_idx) = idx_vec.pop() {
+            match_elem(
+                self.get(aux_idx),
+                |n| {
+                    idx_vec.append(&mut n.expr.ch());
+                },
+                |l| {
+                    res.insert(l.val.val);
+                },
+            );
+        }
+
+        res
+    }
+
+    pub fn pn(&self, idx: usize) -> Vec<(char, String)> {
+        let mut res = Vec::new();
+        let mut idx_vec = vec![Some(idx)];
+
+        while let Some(aux_opt) = idx_vec.pop() {
+            if let Some(aux_idx) = aux_opt {
+                res.push(match_elem(
+                    self.get(aux_idx),
+                    |n| {
+                        idx_vec.append(&mut n.expr.ch().into_iter().map(Some).collect());
+                        idx_vec.push(None);
+                        (n.expr.op(), n.sign())
+                    },
+                    |l| (l.val.val, l.val.sign.clone()),
+                ));
+            } else {
+                res.push(('!', "".to_string()));
+            }
+        }
+
+        res.reverse();
+        res
     }
 }

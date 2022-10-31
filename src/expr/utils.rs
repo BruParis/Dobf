@@ -13,7 +13,7 @@ pub(super) fn compute_op(op: char, cst1: u32, cst2: u32) -> u32 {
     }
 }
 
-pub(super) fn compute_sign(cst: u32, sign: String) -> u32 {
+pub fn compute_sign(cst: u32, sign: String) -> u32 {
     match sign.as_str() {
         "" => cst,
         "-" => (-(cst as i32)) as u32,

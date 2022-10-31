@@ -13,35 +13,41 @@ pub(super) enum Expr {
 impl Expr {
     pub(super) fn op(&self) -> char {
         match self {
-            Expr::MBA(_) => '+',
-            Expr::MBATerm(_) => '.',
-            Expr::Bitwise(e) => e.op,
-            Expr::Other(e) => e.op,
+            Self::MBA(_) => '+',
+            Self::MBATerm(_) => '.',
+            Self::Bitwise(e) => e.op,
+            Self::Other(e) => e.op,
+        }
+    }
+    pub(super) fn unwrap_bitwise<'a>(&'a self) -> Option<&'a Bitwise> {
+        match self {
+            Self::Bitwise(e) => Some(&e),
+            _ => None,
         }
     }
     pub(super) fn ch(&self) -> Vec<usize> {
         match self {
-            Expr::MBA(e) => e.ch.clone(),
-            Expr::MBATerm(e) => vec![e.bitw],
-            Expr::Bitwise(e) => e.ch.clone(),
-            Expr::Other(e) => e.ch.clone(),
+            Self::MBA(e) => e.ch.clone(),
+            Self::MBATerm(e) => vec![e.bitw],
+            Self::Bitwise(e) => e.ch.clone(),
+            Self::Other(e) => e.ch.clone(),
         }
     }
     pub(super) fn take_ch(&mut self) -> Vec<usize> {
         match self {
-            Expr::MBA(e) => mem::take(&mut e.ch),
-            Expr::MBATerm(e) => vec![e.bitw],
-            Expr::Bitwise(e) => mem::take(&mut e.ch),
-            Expr::Other(e) => mem::take(&mut e.ch),
+            Self::MBA(e) => mem::take(&mut e.ch),
+            Self::MBATerm(e) => vec![e.bitw],
+            Self::Bitwise(e) => mem::take(&mut e.ch),
+            Self::Other(e) => mem::take(&mut e.ch),
         }
     }
 
     pub(super) fn push_ch_mut(&mut self, arena: &Arena, ch_idx: &Vec<usize>) -> Option<Expr> {
         match self {
-            Expr::MBA(e) => e.push_ch_mut(arena, ch_idx),
-            Expr::MBATerm(e) => e.push_ch_mut(arena, ch_idx),
-            Expr::Bitwise(e) => e.push_ch_mut(arena, ch_idx),
-            Expr::Other(e) => e.push_ch_mut(arena, ch_idx),
+            Self::MBA(e) => e.push_ch_mut(arena, ch_idx),
+            Self::MBATerm(e) => e.push_ch_mut(arena, ch_idx),
+            Self::Bitwise(e) => e.push_ch_mut(arena, ch_idx),
+            Self::Other(e) => e.push_ch_mut(arena, ch_idx),
         }
     }
 }

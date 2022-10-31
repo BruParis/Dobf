@@ -80,6 +80,10 @@ impl Node {
         self.expr.ch()
     }
 
+    pub fn has_cst(&self) -> bool {
+        !self.cst.is_none()
+    }
+
     pub(super) fn pref_suff(&self) -> (String, String) {
         let (mut p_str, mut s_str) = (String::new(), String::new());
         let closed_par = self.sign.len() > 0;
