@@ -147,7 +147,7 @@ pub fn parse_rpn(mut line: String) -> Result<VecDeque<String>, ParseError> {
         res_rpn.push_back(op.to_string());
     }
 
-    // '-' is can be binary or unary operator
+    // '-' can be binary or unary operator
     // if binary operator, convert to unary with use of add ('-' -> '-', '+')
     let mut num_term = 0;
     let mut aux_rpn: VecDeque<String> = VecDeque::new();
